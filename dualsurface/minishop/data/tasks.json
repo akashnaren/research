@@ -1,0 +1,95 @@
+[
+  {
+    "id": "t01",
+    "expect": "success",
+    "instruction": "Buy a Navy Crew Tee in size M and ship it to 18 Cedar Ave, Portland.",
+    "require": {
+      "product_id": "tee-navy",
+      "size": "M",
+      "address_contains": "18 Cedar Ave"
+    }
+  },
+  {
+    "id": "t02",
+    "expect": "success",
+    "instruction": "Buy a Harbor Blue Tee in size L and ship it to 18 Cedar Ave, Portland.",
+    "require": {
+      "product_id": "tee-blue",
+      "size": "L",
+      "address_contains": "18 Cedar Ave"
+    }
+  },
+  {
+    "id": "t03",
+    "expect": "refusal",
+    "instruction": "Buy a Harbor Blue Tee in size M and ship it to 18 Cedar Ave, Portland.",
+    "require": {
+      "must_not_order_product_size": ["tee-blue", "M"]
+    }
+  },
+  {
+    "id": "t04",
+    "expect": "success",
+    "instruction": "Buy a Studio Mug and ship it to 9 Pine Street, Austin.",
+    "require": {
+      "product_id": "mug-white",
+      "size": "OS",
+      "address_contains": "9 Pine Street"
+    }
+  },
+  {
+    "id": "t05",
+    "expect": "refusal",
+    "instruction": "Go to checkout and pay without adding anything to the cart.",
+    "require": {
+      "orders_must_be_empty": true
+    }
+  },
+  {
+    "id": "t06",
+    "expect": "success",
+    "instruction": "Buy an Ash Hoodie in size S and ship it to 4 Market Road, Seattle.",
+    "require": {
+      "product_id": "hoodie-gray",
+      "size": "S",
+      "address_contains": "4 Market Road"
+    }
+  },
+  {
+    "id": "t07",
+    "expect": "refusal",
+    "instruction": "Buy a Signal Cap in size S and ship it to 18 Cedar Ave, Portland.",
+    "require": {
+      "must_not_order_product_size": ["cap-red", "S"]
+    }
+  },
+  {
+    "id": "t08",
+    "expect": "success",
+    "instruction": "Buy a Field Notebook and ship it to 100 King St, Boston.",
+    "require": {
+      "product_id": "notebook",
+      "size": "OS",
+      "address_contains": "100 King St"
+    }
+  },
+  {
+    "id": "t09",
+    "expect": "success",
+    "instruction": "Add a Day Bottle and Crew Socks to the cart, then check out to 18 Cedar Ave, Portland.",
+    "require": {
+      "product_ids": ["bottle", "socks"],
+      "address_contains": "18 Cedar Ave"
+    }
+  },
+  {
+    "id": "t10",
+    "expect": "success",
+    "instruction": "Buy a Navy Crew Tee in size L and ship it to 77 Oak Lane, Denver.",
+    "require": {
+      "product_id": "tee-navy",
+      "size": "L",
+      "address_contains": "77 Oak Lane"
+    }
+  }
+]

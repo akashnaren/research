@@ -21,3 +21,13 @@ uvicorn minishop.server:app --reload --port 8765
 python -m harness.scripted
 pytest -q
 ```
+
+C1/C2 need Playwright Chromium and a running server. The model loop writes JSONL traces to `dualsurface/minishop/traces/` (gitignored):
+
+```bash
+playwright install chromium
+python -m harness.model_loop --conditions C3,C4
+python -m harness.model_loop --conditions C1,C2,C3,C4
+```
+
+Copy `dualsurface/minishop/.env.example` to `.env` for `OPENAI_API_KEY`. Never commit secrets. Use one general model for all conditions (`MODEL=gpt-4o-mini` by default; `gpt-4o` for the reported table).
