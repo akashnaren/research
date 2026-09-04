@@ -1,0 +1,16 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.env
+*.egg-info/
+dist/
+build/
+.DS_Store
+dualsurface/minishop/traces/
+dualsurface/minishop/.playwright/
+node_modules/
+*.png
+!docs/**/*.png
