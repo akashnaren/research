@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}MiniShop{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-view="{{ view }}" data-cart-count="{{ cart_count }}"{% if illegal %} data-illegal="true"{% endif %}>
+  <div class="promo" role="note">Free shipping over $50 · Members earn double points this week · Display only</div>
+  <header class="site-header">
+    <a class="logo" href="/">MiniShop</a>
+    <nav class="primary-nav" aria-label="Primary">
+      <a href="/">Catalog</a>
+      <a href="/?filter=new">New</a>
+      <a href="/?filter=sale">Sale</a>
+      <a href="/help/lookbook">Lookbook</a>
+      <a href="/help/stores">Stores</a>
+    </nav>
+    <form class="search" action="/" method="get" role="search">
+      <label class="sr-only" for="q">Search the catalog</label>
+      <input id="q" type="search" name="q" placeholder="Search tees, mugs, gifts…" value="{{ query|default('') }}" aria-label="Search the catalog">
+      <button type="submit">Search</button>
+    </form>
+    <a class="cart-link" href="/checkout">Checkout · {{ cart_count }} items</a>
+  </header>
+  <div class="layout">
+    <aside class="filters" aria-label="Decorative filters">
+      <h2>Filters</h2>
+      <p class="hint">Staff picks and price chips are promotional. They do not change the catalogue.</p>
+      <a class="chip{% if active_filter == 'under-20' %} on{% endif %}" href="/?filter=under-20">Under $20</a>
+      <a class="chip{% if active_filter == 'staff' %} on{% endif %}" href="/?filter=staff">Staff picks</a>
+      <a class="chip{% if active_filter == 'sale' %} on{% endif %}" href="/?filter=sale">On sale</a>
+      <a class="chip{% if active_filter == 'in-stock' %} on{% endif %}" href="/?filter=in-stock">In stock</a>
+      <h3>Related</h3>
+      <ul>
+        <li><a href="/help/gift-cards">Gift cards</a></li>
+        <li><a href="/help/shipping">Shipping &amp; returns</a></li>
+        <li><a href="/help/size-guide">Size guide</a></li>
+        <li><a href="/help/care">Fabric care</a></li>
+      </ul>
+    </aside>
+    <main>
+      {% if error %}
+      <div class="alert" role="alert" data-illegal="true">{{ error }}</div>
+      {% endif %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  <footer class="site-footer">
+    <p>MiniShop pilot store · Not a real checkout · <a href="/help/shipping">Help</a></p>
+  </footer>
+</body>
+</html>

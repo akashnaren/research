@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Checkout · MiniShop{% endblock %}
+{% block content %}
+<h1>Checkout</h1>
+{% if session.cart %}
+  <h2>Cart</h2>
+  <ul class="cart-lines">
+    {% for item in session.cart %}
+    <li>{{ item.name }} · size {{ item.size }} · ${{ item.price }}</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>Your cart is empty.</p>
+{% endif %}
+
+<form method="post" action="/checkout/address">
+  <label for="address">Shipping address</label>
+  <textarea id="address" name="address" rows="3" aria-label="Shipping address">{{ session.address }}</textarea>
+  <button type="submit">Save address</button>
+</form>
+
+<form method="post" action="/checkout/pay">
+  <button type="submit" id="pay">Pay now</button>
+</form>
+<p><a href="/">Continue shopping</a></p>
+{% endblock %}

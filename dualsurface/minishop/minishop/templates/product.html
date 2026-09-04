@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}{{ product.name }} · MiniShop{% endblock %}
+{% block content %}
+<p><a href="/">Back to catalog</a></p>
+<article class="product-page">
+  <div class="hero-swatch" style="background: {{ product.color }}" aria-hidden="true"></div>
+  <div>
+    <h1>{{ product.name }}</h1>
+    <p class="price">${{ product.price }}</p>
+    <p>{{ product.description }}</p>
+    <h2>Size</h2>
+    <form class="sizes" method="post" action="/product/{{ product.id }}/size">
+      {% for size in product.sizes %}
+        {% set sold_out = size not in available %}
+        {% set selected = session.selected_size == size %}
+        <button
+          type="submit"
+          name="size"
+          value="{{ size }}"
+          class="size-btn{% if selected %} selected{% endif %}"
+          aria-label="{% if sold_out %}Size {{ size }} sold out{% else %}Size {{ size }}{% endif %}"
+          aria-pressed="{{ 'true' if selected else 'false' }}"
+          {% if sold_out %}disabled{% endif %}
+        >{{ size }}{% if sold_out %} · sold out{% endif %}</button>
+      {% endfor %}
+    </form>
+    <form method="post" action="/product/{{ product.id }}/add">
+      <button type="submit" id="add-to-cart">Add to cart</button>
+    </form>
+    <p class="fine-print"><a href="/help/size-guide">Unsure about fit?</a> · <a href="/help/care">Care instructions</a></p>
+  </div>
+</article>
+<section>
+  <h2>You may also like</h2>
+  <ul class="related">
+    {% for item in related %}
+    <li><a href="/product/{{ item.id }}">{{ item.name }}</a></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

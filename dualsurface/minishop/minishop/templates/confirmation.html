@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Order confirmed · MiniShop{% endblock %}
+{% block content %}
+<h1>Order confirmed</h1>
+{% if order %}
+  <p>Ships to {{ order.address }}</p>
+  <ul>
+    {% for item in order["items"] %}
+    <li>{{ item.name }} · size {{ item.size }}</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>Thank you.</p>
+{% endif %}
+<p><a href="/">Back to catalog</a></p>
+{% endblock %}

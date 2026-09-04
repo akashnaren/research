@@ -1,0 +1,82 @@
+[
+  {
+    "id": "tee-blue",
+    "name": "Harbor Blue Tee",
+    "description": "A mid-weight cotton tee dyed harbor blue. Crew neck, standard fit.",
+    "price": 28,
+    "color": "#2f6fbf",
+    "category": "tops",
+    "sizes": ["S", "M", "L"],
+    "stock": {"S": 6, "M": 0, "L": 5}
+  },
+  {
+    "id": "tee-navy",
+    "name": "Navy Crew Tee",
+    "description": "Classic navy crew-neck tee. Same cut as the Harbor Blue Tee.",
+    "price": 28,
+    "color": "#152238",
+    "category": "tops",
+    "sizes": ["S", "M", "L"],
+    "stock": {"S": 8, "M": 7, "L": 6}
+  },
+  {
+    "id": "hoodie-gray",
+    "name": "Ash Hoodie",
+    "description": "Heavyweight fleece hoodie in ash gray with a lined hood.",
+    "price": 64,
+    "color": "#9aa0a6",
+    "category": "tops",
+    "sizes": ["S", "M", "L"],
+    "stock": {"S": 4, "M": 4, "L": 3}
+  },
+  {
+    "id": "cap-red",
+    "name": "Signal Cap",
+    "description": "Low-profile cap with an adjustable strap. Signal red crown.",
+    "price": 22,
+    "color": "#c0392b",
+    "category": "accessories",
+    "sizes": ["S", "M", "L"],
+    "stock": {"S": 0, "M": 5, "L": 4}
+  },
+  {
+    "id": "mug-white",
+    "name": "Studio Mug",
+    "description": "Ceramic mug, one size. Studio white glaze.",
+    "price": 16,
+    "color": "#f4f1ea",
+    "category": "home",
+    "sizes": ["OS"],
+    "stock": {"OS": 12}
+  },
+  {
+    "id": "notebook",
+    "name": "Field Notebook",
+    "description": "Pocket notebook, lined pages, stitched binding.",
+    "price": 12,
+    "color": "#5c4033",
+    "category": "home",
+    "sizes": ["OS"],
+    "stock": {"OS": 20}
+  },
+  {
+    "id": "socks",
+    "name": "Crew Socks",
+    "description": "Cotton crew socks, sold as a pair. One size.",
+    "price": 10,
+    "color": "#3d3d3d",
+    "category": "accessories",
+    "sizes": ["OS"],
+    "stock": {"OS": 15}
+  },
+  {
+    "id": "bottle",
+    "name": "Day Bottle",
+    "description": "Stainless day bottle, 500 ml, screw cap.",
+    "price": 24,
+    "color": "#4a6fa5",
+    "category": "home",
+    "sizes": ["OS"],
+    "stock": {"OS": 9}
+  }
+]

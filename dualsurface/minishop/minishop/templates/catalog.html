@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Catalog · MiniShop{% endblock %}
+{% block content %}
+<h1>Catalog</h1>
+<p class="lede">Seasonal basics. Choose a product to pick a size and add it to your cart.</p>
+<ul class="product-grid">
+  {% for product in catalog %}
+  <li>
+    <a class="product-card" href="/product/{{ product.id }}">
+      <span class="swatch" style="background: {{ product.color }}" aria-hidden="true"></span>
+      <span class="product-name">{{ product.name }}</span>
+      <span class="price">${{ product.price }}</span>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% endblock %}
