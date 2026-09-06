@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 
@@ -25,14 +25,23 @@ def extract_usage(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 class OpenAICompat:
-    def __init__(self, api_key: str, base_url: str, model: str) -> None:
+    def __init__(self, api_key: str | Callable[[], str], base_url: str, model: str) -> None:
         self.model = model
         self.base_url = base_url.rstrip("/")
+        # Vertex access tokens expire after about an hour, so `api_key` may
+        # be a callable that is invoked fresh on every request instead of a
+        # fixed string. A plain string (e.g. OPENAI_API_KEY) still works.
+        self._api_key = api_key
         self.client = httpx.Client(
             base_url=self.base_url,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            headers={"Content-Type": "application/json"},
             timeout=120.0,
         )
+
+    def _token(self) -> str:
+        if callable(self._api_key):
+            return self._api_key()
+        return self._api_key
 
     def chat(
         self,
@@ -51,7 +60,8 @@ class OpenAICompat:
             body["tool_choice"] = "auto"
         if json_object:
             body["response_format"] = {"type": "json_object"}
-        response = self.client.post("/chat/completions", json=body)
+        headers = {"Authorization": f"Bearer {self._token()}"}
+        response = self.client.post("/chat/completions", json=body, headers=headers)
         try:
             payload = response.json()
         except json.JSONDecodeError:

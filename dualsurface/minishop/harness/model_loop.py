@@ -15,8 +15,10 @@ from dotenv import load_dotenv
 from harness.adapters.c1 import apply_c1, observe_c1
 from harness.adapters.c2 import apply_c2, observe_c2
 from harness.adapters.human_ui import HumanUI
+from harness.models import ModelSpec, resolve_aliases
 from harness.openai_compat import OpenAICompat
 from harness.prompts import system_prompt
+from harness.vertex import VertexAccessToken, vertex_endpoint
 
 ROOT = Path(__file__).resolve().parent.parent
 TRACES = ROOT / "traces"
@@ -56,7 +58,20 @@ def _parse_json(text: str) -> dict[str, Any]:
         raise
 
 
-def _messages(condition: str, task: dict[str, Any], prior: list[str], observation: str | list[dict[str, Any]]) -> list[dict[str, Any]]:
+JSON_ONLY_INSTRUCTION = (
+    "\n\nRespond with a single JSON object only. No prose, no markdown fences, "
+    "no text before or after the JSON object."
+)
+
+
+def _messages(
+    condition: str,
+    task: dict[str, Any],
+    prior: list[str],
+    observation: str | list[dict[str, Any]],
+    *,
+    force_json_text: bool = False,
+) -> list[dict[str, Any]]:
     prior_text = "None." if not prior else "\n".join(f"{i + 1}. {item}" for i, item in enumerate(prior))
     header = (
         f"Task:\n{task['instruction']}\n\n"
@@ -67,8 +82,15 @@ def _messages(condition: str, task: dict[str, Any], prior: list[str], observatio
         content: Any = [{"type": "text", "text": header}] + observation
     else:
         content = header + "\n\n" + observation
+    system = system_prompt(condition)
+    if force_json_text:
+        # Some Vertex OpenAI-compat paths (e.g. Anthropic/Claude) do not
+        # reliably support response_format=json_object; fall back to
+        # instructing JSON-only output via the prompt instead, and parse
+        # leniently with _parse_json.
+        system = system + JSON_ONLY_INSTRUCTION
     return [
-        {"role": "system", "content": system_prompt(condition)},
+        {"role": "system", "content": system},
         {"role": "user", "content": content},
     ]
 
@@ -86,6 +108,8 @@ def run_c3_c4(
     task: dict[str, Any],
     http: httpx.Client,
     llm: OpenAICompat,
+    model_alias: str,
+    json_object_supported: bool = True,
 ) -> dict[str, Any]:
     session_id = _new_session(http)
     enforce = condition == "C4"
@@ -99,7 +123,8 @@ def run_c3_c4(
     for step in range(1, STEP_CAP + 1):
         if condition == "C4":
             observation = json.dumps(http.get("/agent/surface", params={"session_id": session_id}).json())
-            result = llm.chat(_messages(condition, task, prior, observation), json_object=True)
+            messages = _messages(condition, task, prior, observation, force_json_text=not json_object_supported)
+            result = llm.chat(messages, json_object=json_object_supported)
             action = _parse_json(result["message"].get("content") or "")
             name = action.get("name")
             arguments = action.get("arguments") or {}
@@ -162,7 +187,7 @@ def run_c3_c4(
             break
 
     grade = _grade(http, session_id, task["id"])
-    return _summarize(condition, task, llm.model, session_id, steps, illegal_count, grade, done)
+    return _summarize(condition, task, llm.model, model_alias, session_id, steps, illegal_count, grade, done)
 
 
 def run_c1_c2(
@@ -172,6 +197,8 @@ def run_c1_c2(
     http: httpx.Client,
     llm: OpenAICompat,
     base_url: str,
+    model_alias: str,
+    json_object_supported: bool = True,
 ) -> dict[str, Any]:
     session_id = _new_session(http)
     ui = HumanUI(base_url, session_id, width=VIEWPORT[0], height=VIEWPORT[1])
@@ -205,7 +232,8 @@ def run_c1_c2(
                 observation = obs["tree"]
                 trace_obs = {"kind": "aria", "tree": obs["tree"]}
 
-            result = llm.chat(_messages(condition, task, prior, observation), json_object=True)
+            messages = _messages(condition, task, prior, observation, force_json_text=not json_object_supported)
+            result = llm.chat(messages, json_object=json_object_supported)
             action = _parse_json(result["message"].get("content") or "")
             applied = apply_c1(ui, action) if condition == "C1" else apply_c2(ui, action)
             illegal = bool(applied.get("illegal"))
@@ -233,13 +261,14 @@ def run_c1_c2(
         ui.close()
 
     grade = _grade(http, session_id, task["id"])
-    return _summarize(condition, task, llm.model, session_id, steps, illegal_count, grade, done)
+    return _summarize(condition, task, llm.model, model_alias, session_id, steps, illegal_count, grade, done)
 
 
 def _summarize(
     condition: str,
     task: dict[str, Any],
     model: str,
+    model_alias: str,
     session_id: str,
     steps: list[dict[str, Any]],
     illegal_count: int,
@@ -254,6 +283,7 @@ def _summarize(
         "condition": condition,
         "task_id": task["id"],
         "model": model,
+        "model_alias": model_alias,
         "session_id": session_id,
         "passed": bool(grade.get("passed")),
         "reason": grade.get("reason"),
@@ -271,12 +301,54 @@ def _summarize(
     }
 
 
-def run_one(condition: str, task: dict[str, Any], http: httpx.Client, llm: OpenAICompat, base_url: str) -> dict[str, Any]:
+def run_one(
+    condition: str,
+    task: dict[str, Any],
+    http: httpx.Client,
+    llm: OpenAICompat,
+    base_url: str,
+    *,
+    model_alias: str,
+    json_object_supported: bool = True,
+) -> dict[str, Any]:
     if condition in {"C3", "C4"}:
-        return run_c3_c4(condition=condition, task=task, http=http, llm=llm)
+        return run_c3_c4(
+            condition=condition,
+            task=task,
+            http=http,
+            llm=llm,
+            model_alias=model_alias,
+            json_object_supported=json_object_supported,
+        )
     if condition in {"C1", "C2"}:
-        return run_c1_c2(condition=condition, task=task, http=http, llm=llm, base_url=base_url)
+        return run_c1_c2(
+            condition=condition,
+            task=task,
+            http=http,
+            llm=llm,
+            base_url=base_url,
+            model_alias=model_alias,
+            json_object_supported=json_object_supported,
+        )
     raise ValueError(f"unknown condition {condition}")
+
+
+def _build_llm(spec: ModelSpec) -> OpenAICompat:
+    """Construct an OpenAICompat client for a ModelSpec (Vertex or OpenAI)."""
+    if spec.provider == "vertex":
+        endpoint = vertex_endpoint()
+        token = VertexAccessToken()
+        # Pass a callable, not a fixed string: Vertex access tokens expire
+        # after about an hour and must be refreshed on every request.
+        return OpenAICompat(token.get, endpoint.base_url, spec.api_model)
+    if spec.provider == "openai":
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            print("OPENAI_API_KEY is required (see .env.example). Do not commit .env.", file=sys.stderr)
+            raise SystemExit(2)
+        base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+        return OpenAICompat(api_key, base_url, spec.api_model)
+    raise ValueError(f"unknown provider {spec.provider!r} for model alias {spec.alias!r}")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -285,15 +357,36 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--conditions", default="C3,C4", help="Comma-separated C1,C2,C3,C4")
     parser.add_argument("--tasks", default="all", help="Comma-separated task ids, or all")
     parser.add_argument("--model", default=os.environ.get("MODEL", "gpt-4o-mini"))
+    parser.add_argument(
+        "--models",
+        default=None,
+        help=(
+            "Comma-separated model aliases from harness/models.py (e.g. gemini-flash,sonnet,grok-fast), "
+            "or a sweep name (mid, better, gcp). Overrides --model. Every requested model runs across "
+            "every requested condition; results are tagged per model alias, never pooled."
+        ),
+    )
     parser.add_argument("--base", default=os.environ.get("MINISHOP_BASE", "http://127.0.0.1:8765"))
     args = parser.parse_args(argv)
 
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        print("OPENAI_API_KEY is required (see .env.example). Do not commit .env.", file=sys.stderr)
-        raise SystemExit(2)
-    base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
-    llm = OpenAICompat(api_key, base_url, args.model)
+    if args.models:
+        try:
+            specs = resolve_aliases(args.models)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            raise SystemExit(2)
+    else:
+        # Backward-compatible path: a single OpenAI model id, unchanged behavior.
+        specs = [
+            ModelSpec(
+                alias=args.model,
+                provider="openai",
+                api_model=args.model,
+                vision=True,
+                tools=True,
+                json_object=True,
+            )
+        ]
 
     conditions = [item.strip().upper() for item in args.conditions.split(",") if item.strip()]
     http = _client(args.base)
@@ -310,28 +403,44 @@ def main(argv: list[str] | None = None) -> None:
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     failed = 0
-    for condition in conditions:
-        for task in all_tasks:
-            print(f"{condition} {task['id']} ...", flush=True)
-            row = run_one(condition, task, http, llm, args.base)
-            path = TRACES / f"{stamp}_{args.model}_{condition}_{task['id']}.jsonl"
-            header = {
-                "type": "run",
-                "model": args.model,
-                "condition": condition,
-                "task_id": task["id"],
-                "temperature": 0,
-                "step_cap": STEP_CAP,
-                "history": "task + prior actions + current observation",
-            }
-            _write_jsonl(path, [header, *row["steps_detail"], {k: v for k, v in row.items() if k != "steps_detail"}])
-            mark = "PASS" if row["passed"] else "FAIL"
-            print(
-                f"  {mark} steps={row['steps']} in={row['input_tokens']} out={row['output_tokens']} "
-                f"image_tokens={row['image_tokens']} illegal={row['illegal_actions']} trace={path}"
-            )
-            if not row["passed"] and task.get("expect") == "success":
-                failed += 1
+    # Loop models outermost, same shape as the existing loop over conditions
+    # and tasks. Never pooled: each model x condition combination gets its
+    # own trace file and its own tagged result row (PROTOCOL.md "Models").
+    for spec in specs:
+        llm = _build_llm(spec)
+        for condition in conditions:
+            for task in all_tasks:
+                print(f"{spec.alias} {condition} {task['id']} ...", flush=True)
+                row = run_one(
+                    condition,
+                    task,
+                    http,
+                    llm,
+                    args.base,
+                    model_alias=spec.alias,
+                    json_object_supported=spec.json_object,
+                )
+                path = TRACES / f"{stamp}_{spec.alias}_{condition}_{task['id']}.jsonl"
+                header = {
+                    "type": "run",
+                    "model": spec.api_model,
+                    "model_alias": spec.alias,
+                    "condition": condition,
+                    "task_id": task["id"],
+                    "temperature": 0,
+                    "step_cap": STEP_CAP,
+                    "history": "task + prior actions + current observation",
+                }
+                _write_jsonl(
+                    path, [header, *row["steps_detail"], {k: v for k, v in row.items() if k != "steps_detail"}]
+                )
+                mark = "PASS" if row["passed"] else "FAIL"
+                print(
+                    f"  {mark} steps={row['steps']} in={row['input_tokens']} out={row['output_tokens']} "
+                    f"image_tokens={row['image_tokens']} illegal={row['illegal_actions']} trace={path}"
+                )
+                if not row["passed"] and task.get("expect") == "success":
+                    failed += 1
     raise SystemExit(1 if failed else 0)
 
 
