@@ -51,4 +51,24 @@ python -m harness.model_loop --conditions C1,C2,C3,C4
 python -m harness.model_loop --conditions C4 --tasks t01,t02 --model gpt-4o
 ```
 
+`--model` (single OpenAI model id) is the default fallback path and behaves exactly as before.
+
+To run one or more general models sourced from GCP Vertex AI Model Garden, use `--models` with a
+comma-separated list of aliases from `harness/models.py`, or a named sweep (`mid`, `better`, `gcp`):
+
+```bash
+# gcloud auth application-default login
+# GOOGLE_CLOUD_PROJECT=..., VERTEX_LOCATION=global in .env
+python -m harness.model_loop --models gemini-flash,sonnet,grok-fast --conditions C3,C4
+python -m harness.model_loop --models mid --conditions C1,C2,C3,C4
+python -m harness.model_loop --models better --conditions C3,C4
+python -m harness.model_loop --models gcp --conditions C3,C4
+```
+
+Every requested model runs across every requested condition; each model x condition combination
+gets its own trace file and its own `model_alias`-tagged result row (never pooled, per PROTOCOL.md).
+Vertex auth is Application Default Credentials (no API key); each Vertex model must also be enabled
+in the project's Model Garden. Claude's computer-use tool, UI-TARS, Operator, and other GUI-pretrained
+action models are intentionally not registered here -- see PROTOCOL.md "Models".
+
 C1 clicks the human pages from a screenshot. C2 uses the accessibility tree of those same pages. Neither condition may call the JSON agent API to act.

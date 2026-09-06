@@ -36,6 +36,8 @@ The mechanism is hypothesized to be general. Effect size is not assumed to be th
 
 **Not used in the main line:** models or endpoints specialized for computer use (Claude computer-use, UI-TARS, Operator-class systems, GUI-pretrained action models). Those are a **final check**, after the general-model table is stable, to see whether specialization changes the ranking of C1 versus C4.
 
+**Sourcing additional general models:** GCP Vertex AI Model Garden is the primary place to source additional general models for the main line, alongside OpenAI. Acceptable Vertex models are mid-tier Gemini Flash, Claude Sonnet (without the computer-use tool), and Grok Fast, plus optionally stronger variants (Gemini Pro, a newer Sonnet, or a stronger Grok) when a run wants a second data point at higher capability. Each is still one general checkpoint that runs all four conditions through one API, recorded in run metadata (`harness/models.py`), and each must be enabled in the project's Model Garden before use. This does not change the rule above: specialized computer-use models stay out of the main line, and models are never mixed across conditions within one comparison.
+
 Never mix models across conditions in the same comparison. If a vision-capable general model is unavailable, drop C1 from that run and state the limitation.
 
 Report results as model × condition. Do not pool models into one number.
