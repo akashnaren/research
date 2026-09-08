@@ -236,6 +236,22 @@ must be answered before moving on.
   Tool-calling and vision are not perfectly deterministic, so run a small number
   of repeats per cell and report variability.
 
+  - *Oracle / control dry-run (done, C3/C4 only).* Before any paid model run,
+    `python -m harness.model_loop --oracle --conditions C3,C4` replays the
+    scripted `POLICIES` through the real loop and HTTP endpoints with a
+    deterministic, no-API client (`harness/oracle.py`). This is a **control**
+    (a perfect agent) and an **end-to-end pipeline check** (loop → server →
+    traces → `report.py`), not a model result. It validates that both C3 and
+    C4 reach 100% success on the success tasks, that the refusal tasks pass by
+    inaction, and that the table and Pareto figure render. Two honesty caveats:
+    input/output tokens are **locally tokenized** (`o200k_base`, tagged
+    `"source": "local_tokenizer"`), not provider-billed; and only the
+    `messages` are counted, so the C3 tool schema — which a real provider bills
+    but the loop sends via the `tools` argument — is not in the oracle's input
+    count (`harness/obs_cost.py` is where the schema is accounted for). C1/C2
+    are out of scope for the oracle (they need pixel/element oracles), and real
+    models remain the actual Step 2 measurement.
+
 - **Step 3 — model-agnosticism (RQ3).** Add two or three general models
   (e.g. `gemini-flash`, `sonnet`, `grok-fast`) and check whether the ordering of
   conditions holds. Prerequisite questions: *does every model support all four
