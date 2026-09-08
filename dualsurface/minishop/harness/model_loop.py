@@ -46,10 +46,22 @@ def _grade(http: httpx.Client, session_id: str, task_id: str) -> dict[str, Any]:
     return http.get("/agent/grade", params={"session_id": session_id, "task_id": task_id}).json()
 
 
-def _parse_json(text: str) -> dict[str, Any]:
+def _parse_action(text: str) -> tuple[dict[str, Any], bool]:
+    """Parse a model text response into (action, malformed).
+
+    Returns ``(action_dict, False)`` when the response is a usable JSON action
+    object, and ``({}, True)`` when the model emitted *non-empty* output that
+    is not a usable action object (a JSON array, a scalar, or unparseable
+    prose). An entirely empty response is a legitimate "no more actions"
+    signal, not a formatting failure, so it returns ``({}, False)``.
+
+    Malformed responses are still handled without crashing -- the caller treats
+    them as a counted no-op step -- but they are surfaced honestly via the
+    ``malformed`` flag instead of being silently coerced into an empty action.
+    """
     text = (text or "").strip()
     if not text:
-        return {}
+        return {}, False
     parsed: Any = None
     try:
         parsed = json.loads(text)
@@ -61,10 +73,19 @@ def _parse_json(text: str) -> dict[str, Any]:
                 parsed = json.loads(text[start : end + 1])
             except json.JSONDecodeError:
                 parsed = None
+    if isinstance(parsed, dict):
+        return parsed, False
     # A model may emit a JSON array or prose instead of a single action object.
-    # Treat any non-object result as an empty action so the step is a harmless
-    # no-op rather than crashing the whole condition's run.
-    return parsed if isinstance(parsed, dict) else {}
+    return {}, True
+
+
+def _parse_json(text: str) -> dict[str, Any]:
+    """Backward-compatible wrapper: return only the action object.
+
+    Retained for callers/tests that do not need the malformed signal.
+    """
+    action, _ = _parse_action(text)
+    return action
 
 
 JSON_ONLY_INSTRUCTION = (
@@ -126,6 +147,7 @@ def run_c3_c4(
     prior: list[str] = []
     steps: list[dict[str, Any]] = []
     illegal_count = 0
+    malformed_count = 0
     done = False
     # C3: short tool status / product list only. Never the C4 surface document.
     observation: str | list[dict[str, Any]] = json.dumps({"status": "start"})
@@ -134,7 +156,25 @@ def run_c3_c4(
             observation = json.dumps(http.get("/agent/surface", params={"session_id": session_id}).json())
             messages = _messages(condition, task, prior, observation, force_json_text=not json_object_supported)
             result = llm.chat(messages, json_object=json_object_supported)
-            action = _parse_json(result["message"].get("content") or "")
+            action, malformed = _parse_action(result["message"].get("content") or "")
+            if malformed:
+                # The model returned non-empty output that is not a usable
+                # action object (e.g. a JSON array or prose). Count it as a
+                # malformed response and burn a harmless no-op step rather than
+                # misreading it as a deliberate stop.
+                malformed_count += 1
+                prior.append("(malformed response: non-object output)")
+                steps.append(
+                    {
+                        "type": "step",
+                        "step": step,
+                        "usage": result["usage"],
+                        "action": {},
+                        "malformed": True,
+                        "illegal": False,
+                    }
+                )
+                continue
             name = action.get("name")
             arguments = action.get("arguments") or {}
         else:
@@ -196,7 +236,9 @@ def run_c3_c4(
             break
 
     grade = _grade(http, session_id, task["id"])
-    return _summarize(condition, task, llm.model, model_alias, session_id, steps, illegal_count, grade, done)
+    return _summarize(
+        condition, task, llm.model, model_alias, session_id, steps, illegal_count, malformed_count, grade, done
+    )
 
 
 def run_c1_c2(
@@ -215,6 +257,7 @@ def run_c1_c2(
     prior: list[str] = []
     steps: list[dict[str, Any]] = []
     illegal_count = 0
+    malformed_count = 0
     done = False
     image_dir = TRACES / "images"
     try:
@@ -243,7 +286,9 @@ def run_c1_c2(
 
             messages = _messages(condition, task, prior, observation, force_json_text=not json_object_supported)
             result = llm.chat(messages, json_object=json_object_supported)
-            action = _parse_json(result["message"].get("content") or "")
+            action, malformed = _parse_action(result["message"].get("content") or "")
+            if malformed:
+                malformed_count += 1
             applied = apply_c1(ui, action) if condition == "C1" else apply_c2(ui, action)
             illegal = bool(applied.get("illegal"))
             if illegal:
@@ -257,6 +302,7 @@ def run_c1_c2(
                     "observation": trace_obs,
                     "action": action,
                     "applied": {k: v for k, v in applied.items() if k != "png"},
+                    "malformed": malformed,
                     "illegal": illegal,
                 }
             )
@@ -270,7 +316,9 @@ def run_c1_c2(
         ui.close()
 
     grade = _grade(http, session_id, task["id"])
-    return _summarize(condition, task, llm.model, model_alias, session_id, steps, illegal_count, grade, done)
+    return _summarize(
+        condition, task, llm.model, model_alias, session_id, steps, illegal_count, malformed_count, grade, done
+    )
 
 
 def _summarize(
@@ -281,6 +329,7 @@ def _summarize(
     session_id: str,
     steps: list[dict[str, Any]],
     illegal_count: int,
+    malformed_count: int,
     grade: dict[str, Any],
     done: bool,
 ) -> dict[str, Any]:
@@ -291,6 +340,7 @@ def _summarize(
         "type": "result",
         "condition": condition,
         "task_id": task["id"],
+        "expect": task.get("expect"),
         "model": model,
         "model_alias": model_alias,
         "session_id": session_id,
@@ -298,6 +348,7 @@ def _summarize(
         "reason": grade.get("reason"),
         "steps": len(steps),
         "illegal_actions": illegal_count,
+        "malformed_actions": malformed_count,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "image_tokens": image_tokens,
@@ -377,6 +428,18 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--base", default=os.environ.get("MINISHOP_BASE", "http://127.0.0.1:8765"))
     parser.add_argument(
+        "--repeats",
+        type=int,
+        default=1,
+        help=(
+            "Number of times to run each (model, condition, task). Default 1 "
+            "(single pass, unchanged behavior). Temperature stays 0; repeats "
+            "capture residual nondeterminism in tool-calling/vision/structured "
+            "output. Each repeat writes its own trace file (suffixed _repNN) and "
+            "its result row is tagged with a 1-based `repeat` index."
+        ),
+    )
+    parser.add_argument(
         "--oracle",
         action="store_true",
         help=(
@@ -444,6 +507,11 @@ def main(argv: list[str] | None = None) -> None:
         wanted = {item.strip() for item in args.tasks.split(",")}
         all_tasks = [task for task in all_tasks if task["id"] in wanted]
 
+    repeats = args.repeats
+    if repeats < 1:
+        print("--repeats must be >= 1", file=sys.stderr)
+        raise SystemExit(2)
+
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     failed = 0
     # Loop models outermost, same shape as the existing loop over conditions
@@ -455,42 +523,57 @@ def main(argv: list[str] | None = None) -> None:
         llm = None if spec.provider == "oracle" else _build_llm(spec)
         for condition in conditions:
             for task in all_tasks:
-                print(f"{spec.alias} {condition} {task['id']} ...", flush=True)
-                run_llm = (
-                    OracleClient(task["id"], POLICIES[task["id"]])
-                    if spec.provider == "oracle"
-                    else llm
-                )
-                row = run_one(
-                    condition,
-                    task,
-                    http,
-                    run_llm,
-                    args.base,
-                    model_alias=spec.alias,
-                    json_object_supported=spec.json_object,
-                )
-                path = TRACES / f"{stamp}_{spec.alias}_{condition}_{task['id']}.jsonl"
-                header = {
-                    "type": "run",
-                    "model": spec.api_model,
-                    "model_alias": spec.alias,
-                    "condition": condition,
-                    "task_id": task["id"],
-                    "temperature": 0,
-                    "step_cap": STEP_CAP,
-                    "history": "task + prior actions + current observation",
-                }
-                _write_jsonl(
-                    path, [header, *row["steps_detail"], {k: v for k, v in row.items() if k != "steps_detail"}]
-                )
-                mark = "PASS" if row["passed"] else "FAIL"
-                print(
-                    f"  {mark} steps={row['steps']} in={row['input_tokens']} out={row['output_tokens']} "
-                    f"image_tokens={row['image_tokens']} illegal={row['illegal_actions']} trace={path}"
-                )
-                if not row["passed"] and task.get("expect") == "success":
-                    failed += 1
+                # Each (model, condition, task) is run `repeats` times. At
+                # temperature 0 this captures residual nondeterminism in
+                # tool-calling / vision / structured output; the traces are
+                # aggregated per (model, condition) by harness.report.
+                for repeat in range(1, repeats + 1):
+                    tag = f"{spec.alias} {condition} {task['id']}"
+                    if repeats > 1:
+                        tag += f" rep{repeat:02d}/{repeats}"
+                    print(f"{tag} ...", flush=True)
+                    run_llm = (
+                        OracleClient(task["id"], POLICIES[task["id"]])
+                        if spec.provider == "oracle"
+                        else llm
+                    )
+                    row = run_one(
+                        condition,
+                        task,
+                        http,
+                        run_llm,
+                        args.base,
+                        model_alias=spec.alias,
+                        json_object_supported=spec.json_object,
+                    )
+                    # Tag the run with its 1-based repeat index. When --repeats
+                    # is absent (single pass), the filename is unchanged so
+                    # existing behavior is preserved byte-for-byte.
+                    row["repeat"] = repeat
+                    suffix = f"_rep{repeat:02d}" if repeats > 1 else ""
+                    path = TRACES / f"{stamp}_{spec.alias}_{condition}_{task['id']}{suffix}.jsonl"
+                    header = {
+                        "type": "run",
+                        "model": spec.api_model,
+                        "model_alias": spec.alias,
+                        "condition": condition,
+                        "task_id": task["id"],
+                        "repeat": repeat,
+                        "temperature": 0,
+                        "step_cap": STEP_CAP,
+                        "history": "task + prior actions + current observation",
+                    }
+                    _write_jsonl(
+                        path, [header, *row["steps_detail"], {k: v for k, v in row.items() if k != "steps_detail"}]
+                    )
+                    mark = "PASS" if row["passed"] else "FAIL"
+                    print(
+                        f"  {mark} steps={row['steps']} in={row['input_tokens']} out={row['output_tokens']} "
+                        f"image_tokens={row['image_tokens']} illegal={row['illegal_actions']} "
+                        f"malformed={row['malformed_actions']} trace={path}"
+                    )
+                    if not row["passed"] and task.get("expect") == "success":
+                        failed += 1
     raise SystemExit(1 if failed else 0)
 
 
