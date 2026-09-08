@@ -328,6 +328,93 @@ must be answered before moving on.
     better — not the fine C3-vs-C4 ordering, which needs repeats before any
     claim.
 
+  - *Repeated run (N=5, gemini-2.5-flash).* The single-pass prerequisite
+    ("is one pass stable enough at temperature 0?") is now answered by running
+    **five repeats** of every (condition, task) cell — `google/gemini-2.5-flash`
+    (alias `gemini-flash`) via Vertex, temperature 0, step cap 20, the same ten
+    fixed tasks — for **200 runs total** (4 conditions × 10 tasks × 5). Each
+    condition was launched as its own `--repeats 5` invocation so one crash
+    cannot abort the others; C2 did hit a transient Vertex 429 mid-sweep, which
+    the new backoff-retry in `harness/openai_compat.py` now absorbs (the sweep
+    resumed for the remaining C2 tasks and completed). Aggregation, bootstrap
+    95% CIs (resampled over the 50 task-repeat units per cell, fixed seed), and
+    the paired C4-vs-C3 test are produced by `harness/report.py`.
+
+    **Per-condition table with bootstrap 95% CIs** (`report/summary.md`):
+
+    | model | cond | n | success | success 95% CI | med_in_tok | in_tok 95% CI | illegal/step | malformed/step |
+    | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+    | gemini-flash | C1 | 50 | 30% | [18%, 42%] | 46338 | [46324, 46368] | 0.000 | 0.000 |
+    | gemini-flash | C2 | 50 | 72% | [60%, 84%] | 6770 | [5835, 9714] | 0.198 | 0.116 |
+    | gemini-flash | C3 | 50 | 100% | [100%, 100%] | 3134 | [3118, 3154] | 0.000 | 0.000 |
+    | gemini-flash | C4 | 50 | 92% | [84%, 98%] | 4454.5 | [4413, 4491] | 0.016 | 0.000 |
+
+    The new `malformed/step` column is the **honest formatting-failure rate**:
+    non-object model output (a JSON array or prose) that the loop now counts
+    instead of silently coercing to a no-op. It is kept separate from
+    `illegal/step` (backend rejections). It surfaces exactly where the prior
+    single-pass write-up said the hidden failures were — **C2** (0.116
+    malformed/step, on top of 0.198 illegal/step); C1/C3/C4 are ~0. This does
+    not change the ranking but makes C2's error composition honest: C2's real
+    trouble is a mix of backend-rejected named actions *and* malformed
+    responses, so its 72% success is the least trustworthy number in the table.
+
+    **Paired C4-vs-C3 per-task differences** (average each task over its 5
+    repeats per condition, then C4 − C3; mean with bootstrap 95% CI resampled
+    over tasks; success and refusal tasks separate):
+
+    | compare | task set | n_tasks | metric | mean diff (C4 − C3) | 95% CI | excludes 0? |
+    | --- | --- | --- | --- | --- | --- | --- |
+    | C4 − C3 | success | 7 | success | −0.114 | [−0.343, 0.000] | no |
+    | C4 − C3 | success | 7 | input_tokens | +1404 | [+1317, +1549] | **yes** |
+    | C4 − C3 | success | 7 | steps | −1.17 | [−1.51, −1.00] | **yes** |
+    | C4 − C3 | refusal | 3 | success | 0.000 | [0.000, 0.000] | no |
+    | C4 − C3 | refusal | 3 | input_tokens | +386 | [−174, +815] | no |
+    | C4 − C3 | refusal | 3 | steps | −0.33 | [−1.00, 0.00] | no |
+
+    **Bottom line, stated with the CIs:**
+
+    - **Success — C4 ties C3 (no significant difference), point estimate favors
+      C3.** The paired success CI is [−0.343, 0.000]: it *includes* zero, so
+      C4's view document does **not** significantly change success on this
+      app/model. But the difference is no longer a single-pass fluke: the entire
+      C4 deficit is **t10**, which C4 now fails **4 of 5 times** on the same
+      illegal action (`illegal/step` 0.016). So the honest reading is "C4 is
+      statistically indistinguishable from C3 on success, with a small,
+      *reproducible* one-task disadvantage," not "C3 > C4 in general."
+    - **Input tokens — C4 significantly *loses* to C3.** C4 costs **+1404 median
+      input tokens per success task** (95% CI [+1317, +1549], firmly excludes
+      zero); every one of the 7 success tasks is positive
+      (`gemini_c3_c4_paired.png`). The C4 view document grows as the cart fills,
+      so its mid-session documents are heavier than C3's compact tool-status
+      objects — reversing the `obs_cost.py` minimal-path prediction (C4 453 vs
+      C3 512 tokens/step) once real step counts are in play.
+    - **Steps — C4 significantly *saves* steps** (−1.17/task, CI [−1.51, −1.00]),
+      as its current-view/affordance document is designed to. On this app the
+      step saving is not enough to offset the per-step token cost.
+    - **C4 is therefore Pareto-*dominated* by C3 here** (C3 is cheaper *and* at
+      least as reliable), so H2's specific claim that C4 dominates is **not
+      supported** for gemini-2.5-flash on MiniShop. C4 keeps the fewest steps,
+      but "compact + current" did not translate into lower total cost.
+    - **C1 and C2 remain dominated, now with CIs.** C1: 30% success
+      [18%, 42%] at ~46.3k median input tokens (~10× C4, ~15× C3), step-capped
+      on every task — cost is in `input_tokens`, not `image_tokens`, which read
+      0 by the Vertex measurement artifact noted in Section 4. C2: 72%
+      [60%, 84%] at 6.8k tokens but the highest illegal rate (0.198/step) and a
+      real malformed rate (0.116/step). Both sit below-and-right of the C3/C4
+      cluster on the cost–reliability frontier (`gemini_repeats_pareto.png`).
+
+    *Run mechanics and cost.* 200 runs, no data lost. One transient C2 429
+    (absorbed by retry + resume); C1 and C4 ran clean. Token totals: **C1 2.11M
+    in / 19.9k out, C2 385k / 9.4k, C3 138k / 1.7k, C4 193k / 4.1k — 2.82M input
+    + 35k output overall**, ≈ **$0.93** at gemini-2.5-flash rates ($0.30/1M in,
+    $2.50/1M out); C1 alone is ~$0.68 (73% of the bill), so screenshots stay the
+    dominant cost. **Limitations, unchanged and restated: one general model, one
+    synthetic app, temperature-0 residual nondeterminism (C3 was in fact fully
+    stable across repeats; C4's only variance is t10; C2 is the noisy one), and
+    10-task statistical power — the paired CIs are over 7 success / 3 refusal
+    tasks, so they are wide by construction and we do not over-claim.**
+
 - **Step 3 — model-agnosticism (RQ3).** Add two or three general models
   (e.g. `gemini-flash`, `sonnet`, `grok-fast`) and check whether the ordering of
   conditions holds. Prerequisite questions: *does every model support all four
