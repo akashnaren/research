@@ -381,7 +381,41 @@ must be answered before moving on.
       C4 deficit is **t10**, which C4 now fails **4 of 5 times** on the same
       illegal action (`illegal/step` 0.016). So the honest reading is "C4 is
       statistically indistinguishable from C3 on success, with a small,
-      *reproducible* one-task disadvantage," not "C3 > C4 in general."
+      *reproducible* one-task disadvantage," not "C3 > C4 in general." **This
+      t10 disadvantage is a genuine C4 model-behavior finding, not a harness
+      bug** — the root cause is diagnosed below.
+
+    **Root cause of the C4 t10 failure (model behavior, not a surface/backend
+    bug).** Each failing repeat follows the identical path:
+    `open_product(tee-navy)` → `set_size(L)` → `add_to_cart`, and then, while
+    still on the **product** view, the model emits
+    `set_address {"address": "77 Oak Lane, Denver"}` **before** `go_checkout`.
+    The backend rejects it under enforcement with HTTP 400
+    `{"illegal": true, "error": "action set_address is disabled"}`. Critically,
+    the C4 surface at that step already advertised that affordance as
+    **disabled** — `{"id": "set_address", "enabled": false, ...}` (the surface
+    marks `set_address` enabled only on the checkout view,
+    `minishop/surface.py`) — and the backend enforcement matches it exactly
+    (`minishop/actions.py::_set_address`). The surface and backend **agree**, so
+    the surface-consistency invariant is intact: C4 did **not** advertise an
+    action the backend then rejected. The failure is the model ignoring the
+    document's `enabled: false` flag (and the prompt's "Prefer enabled
+    affordances"), setting the address on the wrong view, and — after the
+    rejection — proceeding to `go_checkout` and `done` without ever re-issuing
+    `set_address`, so no order is placed ("no order"). The passing repeat took
+    the correct order (`go_checkout` first, then `set_address`, then `pay`).
+    Because this is a real C4 model-behavior finding and **not** a defect in
+    `build_surface`/`apply_action`, no harness code was changed; a regression
+    test now pins the invariant at exactly this state
+    (`tests/test_surface_consistency.py::test_set_address_on_product_view_is_disabled_and_rejected_t10`),
+    which asserts the surface marks `set_address` disabled on the product view
+    **and** the backend rejects it — guarding against any future one-sided
+    change. A fresh **t10-only** C4 re-run (5 repeats, same
+    `gemini-2.5-flash`/Vertex/temperature-0 config) reproduced the failure on
+    **5 of 5** repeats via the identical illegal `set_address` step; the
+    headline **92% C4 success and all other cells above are carried over
+    unchanged** from the original N=5 sweep (only t10 C4 was re-run, and only to
+    confirm the diagnosis — no aggregate numbers were recomputed from it).
     - **Input tokens — C4 significantly *loses* to C3.** C4 costs **+1404 median
       input tokens per success task** (95% CI [+1317, +1549], firmly excludes
       zero); every one of the 7 success tasks is positive
