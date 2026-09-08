@@ -50,14 +50,21 @@ def _parse_json(text: str) -> dict[str, Any]:
     text = (text or "").strip()
     if not text:
         return {}
+    parsed: Any = None
     try:
-        return json.loads(text)
+        parsed = json.loads(text)
     except json.JSONDecodeError:
         start = text.find("{")
         end = text.rfind("}")
         if start >= 0 and end > start:
-            return json.loads(text[start : end + 1])
-        raise
+            try:
+                parsed = json.loads(text[start : end + 1])
+            except json.JSONDecodeError:
+                parsed = None
+    # A model may emit a JSON array or prose instead of a single action object.
+    # Treat any non-object result as an empty action so the step is a harmless
+    # no-op rather than crashing the whole condition's run.
+    return parsed if isinstance(parsed, dict) else {}
 
 
 JSON_ONLY_INSTRUCTION = (
