@@ -273,6 +273,10 @@ must be answered before moving on.
 
 ## 9. Related work to position against
 
+This section lists the strands at a high level; the literature-grounded
+positioning, the strand-by-strand comparison table, and the honest limits of
+the novelty claim are in the "Novelty and positioning" section below.
+
 - **Reusing the human interface** — DOM/accessibility-tree agents and
   screenshot/computer-use agents. These are C1 and C2 in our design; the point
   is that they inherit a representation built for humans.
@@ -285,6 +289,130 @@ must be answered before moving on.
   agent-facing surfaces (e.g. A2UI). None is a de-facto standard. Our C4 is a
   minimal instance of that idea used here as a measurement probe, not a proposed
   standard.
+
+## Novelty and positioning
+
+This section states, grounded in the current literature rather than from
+memory, what is genuinely new in this work and what is not. The claims below
+were checked against primary sources (papers and official docs); the ones we
+could verify are cited at the end of the section, and where a source could not
+be confirmed we say so instead of asserting a detail.
+
+### Core contribution
+
+Prior work overwhelmingly asks *which agent or model is better* at operating a
+computer, holding the interface's representation fixed as a property of the
+benchmark. This study inverts the design: it holds the application, the task
+set, the grader, and the model fixed, and treats the **interface
+representation itself as the independent variable**, comparing four
+representations of the same store (screenshot C1, accessibility/DOM tree C2,
+flat tools C3, and a purpose-built JSON view document C4). Because C3 and C4
+expose the *same operations at the same grain*, any C3-versus-C4 difference is
+attributable to the view document alone — current-view identity, per-action
+`enabled` flags, and argument JSON Schemas — and not to a different action
+vocabulary. The dependent variables are read on a **cost–reliability (tokens
+versus success) Pareto frontier**, an efficiency lens rather than a
+success-only leaderboard. That combination — a controlled A/B/C/D of interface
+*representation*, with a backend-faithful agent-authored surface as one arm,
+measured on a Pareto frontier with a deterministic execution grader — is what
+we have not found in the existing literature.
+
+The two intended papers claim different things. **Paper 1 (agent-native UI
+protocol)** claims the controlled comparison and the specific agent-authored,
+constraint-carrying view document. **Paper 2 (Agent Experience / AX metric
+suite)** claims the framing and packaging of tokens, steps, success, illegal
+actions, hallucination, and latency into a UX-analogous metric suite for agent
+interfaces; the individual metrics are not themselves new (see limitations).
+
+### How this study differs from each strand of prior work
+
+| Prior-work strand | Representative work (verified) | What it does | How this study differs |
+| --- | --- | --- | --- |
+| DOM / accessibility-tree web agents | Mind2Web; WebArena | Operate the human page from its HTML / accessibility tree; the tree is so large it must be filtered (Mind2Web's MindAct ranks DOM elements with a small LM first). | These are our C2. They inherit and are stuck with the human-derived tree; we treat that tree as one condition among four and compare it against an agent-authored surface under a fixed model and grader. |
+| Screenshot / pixel computer-use agents and models | Claude computer use; UI-TARS; SeeClick (and CogAgent-style GUI grounding) | Perceive raw screenshots and emit pixel coordinates / low-level actions; grounding is the central difficulty and screenshots cost ~1–2k tokens each. | These are our C1, and specialized pixel-native models are deliberately deferred to a final check. Our question is not how to ground pixels better but whether a non-pixel, agent-authored representation is Pareto-superior for ordinary general models. |
+| Optimizing the human representation for agents | UIFormer ("From User Interface to Agent Interface"); Prune4Web | Automatically prune / restructure the human UI tree (DOM, a11y tree) to cut tokens; UIFormer reports UI representation is 80–99% of agent token cost and achieves ~49–56% token reduction. | Closest in spirit, but it *compresses a human-derived tree* and keeps it faithful to the human DOM. C4 is authored from backend state, not derived from the human page, and we measure it as a controlled arm rather than as a plug-in optimizer. We explicitly contrast "optimize the tree" with "author a view document." |
+| Proposed agent-UI protocols / "OpenAPI for GUIs" | A2UI; Model Context Protocol (MCP) | A2UI is a declarative JSON protocol in the *opposite direction* — an agent generates UI for a human renderer. MCP standardizes tools, resources, and prompts (JSON-RPC, JSON-Schema tool inputs) for exposing capabilities to models. | Our C4 is application→agent, not agent→human (A2UI), and is richer than MCP's tools/resources: it is a per-view state-plus-affordance document whose `enabled` flags encode *a priori* action validity, matched in grain to a flat-tools control (C3) so the added value of the document can be isolated. We use C4 as a measurement probe, not a proposed standard. |
+| Benchmarks for GUI / web agents | WebArena; VisualWebArena; Mind2Web; WebShop; AndroidWorld; MiniWoB++ | Measure agent/model *capability* (task success, sometimes step/element accuracy) via execution- or state-based grading, with the observation modality fixed by the benchmark. | We reuse the execution-grading idea but not the goal: our fixed variable is the model and our varied variable is the interface. We additionally report a model-free, tokenizer-based observation-cost baseline as a deterministic lower bound, which capability benchmarks do not provide. |
+
+### Distilled differentiators (the ones that hold up)
+
+1. **Interface representation as a controlled independent variable.** App,
+   tasks, grader, and model are held fixed; only the representation changes.
+   Benchmarks and system papers vary the agent/model and fix the interface, so
+   they cannot attribute an effect to representation. This is the strongest and
+   most defensible novelty (paper 1).
+2. **Matched action grain between C3 and C4.** C3 and C4 share one action set;
+   C4 only adds the view document. This isolates the effect of the document
+   (current view + `enabled` flags + argument schemas) from the effect of a
+   different action vocabulary — an identification move we did not find in prior
+   work (paper 1).
+3. **A backend-faithful, agent-authored view document (C4).** Unlike C1/C2
+   (reuse the human surface) and unlike UIFormer/Prune4Web (compress the
+   human-derived tree), C4 is authored from backend state and is kept
+   consistent with the backend by a tested surface-consistency invariant. It is
+   also distinct from A2UI (agent→human direction) and richer than MCP's
+   tools/resources (paper 1).
+4. **Constraint-carrying affordances with an ablation.** C4's `enabled` flags
+   and argument JSON Schemas prune invalid actions before the model acts, and a
+   planned ablation removes the flags/enums to separate *compactness* from
+   *constraint-pruning*. The general idea of action masking / constrained
+   decoding is old, so the contribution here is the controlled ablation that
+   disentangles the two mechanisms, not the idea of constraints (paper 1).
+5. **Cost–reliability as a Pareto question.** We ask whether a representation is
+   *Pareto-superior* (no more costly, at least as reliable), not merely whether
+   success is higher. Token efficiency of UI representations is itself studied
+   (UIFormer), but framing representations on a per-model cost–reliability
+   frontier — the "AX" efficiency lens — is the contribution here (paper 1 for
+   the method; paper 2 for the metric-suite framing).
+6. **Deterministic execution grader plus a model-free observation-cost
+   baseline.** Execution grading is standard; the smaller genuine addition is
+   the deterministic, tokenizer-based observation-cost baseline that gives a
+   model-free lower bound on per-condition cost before any API call.
+
+### What this is NOT (honest limits of the novelty claim)
+
+- **"Representation matters for agents" is already known.** Mind2Web filters the
+  DOM because it is too large; SeeClick is motivated by HTML being "lengthy and
+  occasionally inaccessible"; UIFormer measures UI representation at 80–99% of
+  agent token cost. Our contribution is the *controlled measurement* and the
+  specific agent-authored surface, not the observation that representation has
+  an effect.
+- **Execution-based grading is not new.** WebArena, VisualWebArena, WebShop, and
+  AndroidWorld all grade by program/state checks. We adopt this rather than
+  inventing it.
+- **Token-efficient UI representation is not new.** UIFormer and Prune4Web
+  already reduce UI-tree tokens; our novelty is treating representation as a
+  controlled variable on a Pareto frontier, not the fact that compact
+  representations are cheaper.
+- **An agent-facing surface is "in the air."** A2UI and MCP both point at
+  agent-facing structured interfaces. C4 is one concrete, minimal instance used
+  as a probe; we do not claim to propose a standard.
+- **Constrained/valid-action masking is an old idea** in RL and tool use; only
+  the ablation that separates it from compactness is ours.
+- **The AX metric suite (paper 2) is largely synthesis.** Each metric
+  (tokens, steps, success, illegal actions, hallucination, latency) already
+  exists; the contribution is packaging them as a UX-analogous suite and using
+  them as design feedback on interfaces, which is a framing contribution more
+  than a new measurement.
+- **Scope limits generality.** One synthetic shopping app, ten tasks, general
+  (non-specialized) models, and a hand-authored C4 whose quality is a confound.
+  These bound the strength of any novelty claim and are detailed in Section 8.
+
+### Key references (verified)
+
+- WebArena: A Realistic Web Environment for Building Autonomous Agents — https://arxiv.org/abs/2307.13854
+- VisualWebArena: Evaluating Multimodal Agents on Realistic Visually Grounded Web Tasks — https://aclanthology.org/2024.acl-long.50/
+- Mind2Web: Towards a Generalist Agent for the Web — https://arxiv.org/abs/2306.06070
+- WebShop: Towards Scalable Real-World Web Interaction with Grounded Language Agents — https://proceedings.neurips.cc/paper_files/paper/2022/file/82ad13ec01f9fe44c01cb91814fd7b8c-Paper-Conference.pdf
+- AndroidWorld: A Dynamic Benchmarking Environment for Autonomous Agents — https://arxiv.org/abs/2405.14573
+- MiniWoB++ (Reinforcement Learning on Web Interfaces using Workflow-Guided Exploration) — https://arxiv.org/abs/1802.08802 ; docs: https://miniwob.farama.org/
+- Anthropic: Introducing computer use (Claude 3.5 Sonnet) — https://www.anthropic.com/news/3-5-models-and-computer-use
+- UI-TARS: Pioneering Automated GUI Interaction with Native Agents — https://arxiv.org/abs/2501.12326
+- SeeClick: Harnessing GUI Grounding for Advanced Visual GUI Agents — https://aclanthology.org/2024.acl-long.505/
+- UIFormer / From User Interface to Agent Interface: Efficiency Optimization of UI Representations for LLM Agents — https://arxiv.org/abs/2512.13438
+- Prune4Web: DOM Tree Pruning Programming for Web Agent — https://ojs.aaai.org/index.php/AAAI/article/download/40772/44733
+- A2UI (Agent-to-UI) Protocol — https://a2ui.org/
+- Model Context Protocol (MCP) — https://modelcontextprotocol.io/
 
 ## 10. Paper structure
 
