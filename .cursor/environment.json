@@ -1,0 +1,17 @@
+{
+  "name": "MiniShop pilot study",
+  "install": "./.cursor/install.sh",
+  "terminals": [
+    {
+      "name": "minishop-server",
+      "command": "cd dualsurface/minishop && source .venv/bin/activate && uvicorn minishop.server:app --host 127.0.0.1 --port 8765",
+      "description": "MiniShop FastAPI store. Human UI at http://127.0.0.1:8765/ and agent API under /agent/*."
+    }
+  ],
+  "ports": [
+    {
+      "name": "minishop",
+      "port": 8765
+    }
+  ]
+}
