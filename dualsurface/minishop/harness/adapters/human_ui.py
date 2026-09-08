@@ -77,14 +77,6 @@ class HumanUI:
         except Exception:
             self.page.wait_for_load_state("domcontentloaded")
 
-    def type_text(self, text: str) -> None:
-        assert self.page is not None
-        self.page.keyboard.type(text)
-
-    def scroll(self, dy: float) -> None:
-        assert self.page is not None
-        self.page.mouse.wheel(0, float(dy))
-
     def click_named(self, name: str) -> None:
         assert self.page is not None
         from playwright.sync_api import Locator
