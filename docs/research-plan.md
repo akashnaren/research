@@ -193,13 +193,41 @@ must be answered before moving on.
   completes every expected-success task on C3 and C4 and is correctly rejected
   on the refusal tasks (`python -m harness.scripted`).
 
-- **Step 1 — lock the metrics and the analysis layer (this change).** Freeze
-  the token accounting in Section 3, confirm the harness records every
-  dependent variable, and add `harness/report.py` so runs turn into the table
-  and the Pareto figure. Prerequisite question: *are C3 and C4 exactly matched
-  in operations and grain?* (Yes by construction: same action set; C3 omits the
+- **Step 1 — lock the metrics and the analysis layer.** Freeze the token
+  accounting in Section 3, confirm the harness records every dependent
+  variable, and add `harness/report.py` so runs turn into the table and the
+  Pareto figure. Prerequisite question: *are C3 and C4 exactly matched in
+  operations and grain?* (Yes by construction: same action set; C3 omits the
   view document, C4 adds it. Verified in `minishop/tools.py` vs
   `minishop/surface.py`.)
+
+- **Step 1a — model-free baselines (done).** Two things that must hold before
+  any model run, both executable with no API call:
+
+  - *Observation-cost baseline* (`harness/obs_cost.py`). Replay each task's
+    canonical path and count, with a fixed reference tokenizer (`o200k_base`),
+    the observation tokens each condition imposes per step. This measures the
+    "how heavy is one look" term of Section 3 deterministically. First numbers,
+    over the success tasks along the minimal path:
+
+    | condition | median obs tokens / task | median obs tokens / step |
+    | --- | --- | --- |
+    | C1 (screenshot, gpt-4o high-detail estimate) | 6630 | 1105 |
+    | C3 (flat tools + schema) | 3073 | 512 |
+    | C4 (view document) | 2732 | 453 |
+
+    Reading: text observations are ~2.4x cheaper per step than a screenshot,
+    and the view document (C4) is slightly cheaper than flat tools (C3) because
+    C3 must resend the tool schema on every call while the C4 document is
+    compact. This is only the observation term along the *minimal* path; the
+    step-count differences (where C3's lack of a current view is expected to
+    cost extra steps and illegal actions) are what the model runs add.
+
+  - *Surface-backend consistency invariant*
+    (`tests/test_surface_consistency.py`). The C4 document must never advertise
+    an action as available that the backend rejects, and its size enums must
+    match stock exactly. This makes the hand-authored C4 a trustworthy upper
+    bound. Enforced by tests along every canonical path.
 
 - **Step 2 — main-line run on one general model.** Run `gpt-4o-mini` (then
   `gpt-4o` for the reported table) across C1–C4 on all ten tasks at temperature

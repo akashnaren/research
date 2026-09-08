@@ -82,4 +82,10 @@ python -m harness.report --traces traces --out report            # table + CSV
 python -m harness.report --traces traces --out report --figures  # also pareto.png, input_tokens.png (needs matplotlib)
 ```
 
+`harness.obs_cost` is a model-free baseline: it replays each task's canonical path and counts the per-step observation tokens each condition imposes (C3/C4 exact and server-side; C1 an OpenAI gpt-4o high-detail image estimate; C2 needs a browser and is measured at run time). No API key and no cost.
+
+```bash
+python -m harness.obs_cost --out report   # per-task + per-condition table, writes report/obs_cost.csv
+```
+
 See [`docs/research-plan.md`](../../docs/research-plan.md) for the metrics, the token accounting, the plots, and the ordered experimental steps.
