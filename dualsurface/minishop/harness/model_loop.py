@@ -17,7 +17,9 @@ from harness.adapters.c2 import apply_c2, observe_c2
 from harness.adapters.human_ui import HumanUI
 from harness.models import ModelSpec, resolve_aliases
 from harness.openai_compat import OpenAICompat
+from harness.oracle import OracleClient
 from harness.prompts import system_prompt
+from harness.scripted import POLICIES
 from harness.vertex import VertexAccessToken, vertex_endpoint
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -367,9 +369,32 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
     parser.add_argument("--base", default=os.environ.get("MINISHOP_BASE", "http://127.0.0.1:8765"))
+    parser.add_argument(
+        "--oracle",
+        action="store_true",
+        help=(
+            "Replay the scripted policies with a deterministic, no-API oracle client "
+            "(a perfect-agent control). C3/C4 only; usage is locally tokenized (o200k_base), "
+            "not provider-billed. Ignores --model/--models and tags results as 'oracle'."
+        ),
+    )
     args = parser.parse_args(argv)
 
-    if args.models:
+    if args.oracle:
+        # Control / pipeline-validation path: no network model. Built per task
+        # below (the oracle is task-scoped). A single synthetic spec carries
+        # the 'oracle' alias so traces are never confused with a billed run.
+        specs = [
+            ModelSpec(
+                alias="oracle",
+                provider="oracle",
+                api_model="oracle",
+                vision=False,
+                tools=True,
+                json_object=True,
+            )
+        ]
+    elif args.models:
         try:
             specs = resolve_aliases(args.models)
         except ValueError as exc:
@@ -389,6 +414,17 @@ def main(argv: list[str] | None = None) -> None:
         ]
 
     conditions = [item.strip().upper() for item in args.conditions.split(",") if item.strip()]
+    if args.oracle:
+        # C1/C2 need pixel/element oracles and are out of scope for this
+        # control run; C3/C4 reuse the scripted POLICIES directly.
+        unsupported = [c for c in conditions if c not in {"C3", "C4"}]
+        if unsupported:
+            print(
+                f"--oracle supports C3/C4 only (got {','.join(unsupported)}). "
+                "C1/C2 need pixel/element oracles and are out of scope.",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
     http = _client(args.base)
     try:
         http.get("/agent/tasks").raise_for_status()
@@ -407,15 +443,22 @@ def main(argv: list[str] | None = None) -> None:
     # and tasks. Never pooled: each model x condition combination gets its
     # own trace file and its own tagged result row (PROTOCOL.md "Models").
     for spec in specs:
-        llm = _build_llm(spec)
+        # The oracle is task-scoped (it tracks its position in that task's
+        # policy), so it is built per run below rather than once per spec.
+        llm = None if spec.provider == "oracle" else _build_llm(spec)
         for condition in conditions:
             for task in all_tasks:
                 print(f"{spec.alias} {condition} {task['id']} ...", flush=True)
+                run_llm = (
+                    OracleClient(task["id"], POLICIES[task["id"]])
+                    if spec.provider == "oracle"
+                    else llm
+                )
                 row = run_one(
                     condition,
                     task,
                     http,
-                    llm,
+                    run_llm,
                     args.base,
                     model_alias=spec.alias,
                     json_object_supported=spec.json_object,
