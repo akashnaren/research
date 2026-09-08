@@ -72,3 +72,14 @@ in the project's Model Garden. Claude's computer-use tool, UI-TARS, Operator, an
 action models are intentionally not registered here -- see PROTOCOL.md "Models".
 
 C1 clicks the human pages from a screenshot. C2 uses the accessibility tree of those same pages. Neither condition may call the JSON agent API to act.
+
+### Analysis
+
+`harness.report` aggregates the JSONL traces into a per-`(model, condition)` table (success rate, median steps, median input/output/image tokens, illegal actions per step) and a cost–reliability Pareto frontier. Results are reported per model, never pooled (see PROTOCOL.md "Models").
+
+```bash
+python -m harness.report --traces traces --out report            # table + CSV
+python -m harness.report --traces traces --out report --figures  # also pareto.png, input_tokens.png (needs matplotlib)
+```
+
+See [`docs/research-plan.md`](../../docs/research-plan.md) for the metrics, the token accounting, the plots, and the ordered experimental steps.
