@@ -10,6 +10,7 @@ dist/
 build/
 .DS_Store
 dualsurface/minishop/traces/
+dualsurface/minishop/report/
 dualsurface/minishop/.playwright/
 node_modules/
 *.png
