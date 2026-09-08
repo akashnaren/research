@@ -252,6 +252,82 @@ must be answered before moving on.
     are out of scope for the oracle (they need pixel/element oracles), and real
     models remain the actual Step 2 measurement.
 
+  - *First observed run (done, C1–C4).* The first paid model data. **A single
+    pass of `google/gemini-2.5-flash` (harness alias `gemini-flash`) at
+    temperature 0, step cap 20, no repeats yet, one app (MiniShop), the ten
+    fixed tasks — 7 success + 3 refusal.** Sourced from Vertex AI Model Garden
+    via the OpenAI-compatible endpoint. This is one point estimate per cell, not
+    a stable measurement; read the magnitudes, not the second decimal. Numbers
+    are the `gemini-flash` rows of `report/summary.md`:
+
+    | model | cond | n | success | med_steps | med_in_tok | med_out_tok | med_img_tok | illegal/step |
+    | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+    | gemini-flash | C1 | 10 | 30% | 20 | 46338 | 440 | 0 | 0.000 |
+    | gemini-flash | C2 | 10 | 60% | 6.5 | 6308 | 137 | 0 | 0.232 |
+    | gemini-flash | C3 | 10 | 100% | 7 | 3134 | 35.5 | 0 | 0.000 |
+    | gemini-flash | C4 | 10 | 90% | 6 | 4454.5 | 98.5 | 0 | 0.020 |
+
+    *Image tokens read 0 by measurement artifact, not because C1 is cheap:* the
+    Vertex Gemini OpenAI-compat endpoint folds image tokens into
+    `prompt_tokens` rather than itemizing them (Section 4's provider-dependence
+    caveat), so C1's cost must be read from **total input tokens**, where it is
+    by far the most expensive condition.
+
+    Reading against the hypotheses, the oracle control, and the `obs_cost.py`
+    baseline (per-step observation tokens C1 1105 / C3 512 / C4 453):
+
+    - **C1 (screenshot) is dominated, as H2 predicts.** It succeeded on only
+      3/10 tasks, hit the 20-step cap on *every* task, and cost a median
+      ~46.3k input tokens — roughly **10× C4 and ~15× C3**, and ~76% of the
+      whole run's input tokens by itself. The failure mode is grounding: the
+      model cannot reliably turn pixels into correct click coordinates. Its
+      `illegal/step` reads 0 only because a raw coordinate click rarely trips
+      the backend's illegal flag, so for C1 the signal is in success, steps,
+      and tokens, not the illegal rate.
+    - **C2 (accessibility tree) is middling and error-prone.** 60% success at
+      ~6.3k tokens, but the **highest illegal rate (0.232/step)** — the human
+      tree invites named clicks/fills on elements the backend then rejects.
+    - **C3 and C4 both clear the human-surface conditions comfortably, but on
+      this single pass C3 — not C4 — sits on the cost–reliability frontier.**
+      C3 reached 100% at 3134 median input tokens with **zero** illegal
+      actions; C4 reached 90% at 4455 tokens with 0.020 illegal/step. C4 is
+      therefore Pareto-*dominated* by C3 here (cheaper and more reliable), so
+      H2's specific claim that C4 dominates is **not** supported by this run.
+      C4 did keep the fewest median steps (6 vs 7). The gap is one task: C4
+      failed t10 on an illegal action. With a single pass at temperature 0 that
+      is a one-task swing, well inside the variability a repeats-per-cell design
+      (Step 2's open prerequisite) would expose; it should not be read as
+      "C3 > C4" in general.
+    - **Against the oracle:** the perfect-agent control reaches 100% on both
+      C3 and C4, so gemini-flash's C3 is essentially at the reliability floor
+      and its C4 one task below it. The oracle's C3 input (1455) undercounts
+      because its local tokenizer omits the tool schema the provider bills,
+      while gemini's C3 (3134) includes it — the honest comparison is that a
+      real model on C3 is not far above a perfect agent.
+    - **Against the `obs_cost.py` baseline:** the minimal-path baseline had C4
+      slightly cheaper per step than C3 (453 vs 512). With a real model the
+      ordering reversed: ~448 input tokens/step for C3 vs ~742/step for C4.
+      The C4 view document grows as the session progresses (cart fills →
+      more entities and affordances), so mid-task documents are heavier than
+      the minimal-path average, and C3's compact tool-status objects came out
+      cheaper overall once real step counts were in play.
+
+    *Run mechanics and honesty notes.* One condition needed a retry: C2
+    initially crashed on t02 because the model returned a JSON **array** rather
+    than a single action object, which the C1/C2 apply-adapters could not
+    consume. This is the vision/tool edge case anticipated in the run plan; the
+    fix was a one-function change in `harness/model_loop.py::_parse_json` to
+    coerce any non-object (array or prose) response into an empty no-op action
+    instead of raising, and C2 was re-run once (the other three conditions had
+    already completed and were untouched). The whole run cost ~557k input +
+    ~6.5k output tokens (C1 alone ~423k input), i.e. well under a dollar at
+    Gemini Flash rates. **Limitations, stated plainly: single pass, single
+    model, single synthetic app; temperature 0 is not full determinism.** The
+    robust findings here are the coarse ones — C1 is dominated, C2 is
+    error-prone, and the two agent-native tool conditions (C3, C4) are clearly
+    better — not the fine C3-vs-C4 ordering, which needs repeats before any
+    claim.
+
 - **Step 3 — model-agnosticism (RQ3).** Add two or three general models
   (e.g. `gemini-flash`, `sonnet`, `grok-fast`) and check whether the ordering of
   conditions holds. Prerequisite questions: *does every model support all four
