@@ -83,6 +83,7 @@ expensive multi-model sweeps in the current unit.
 
 ## Web export
 
-Profile ingest path: `papers/agent-native-ui/web/article.md`.
-Regenerate: `python papers/agent-native-ui/build.py`.
+Profile ingest path: `papers/agent-native-ui/web/article.md` (Medium-like
+reader: title, dek, byline placeholder, figure paths). Scholarly source:
+`paper.md`. `build.py` rebuilds HTML/PDF and does not overwrite `article.md`.
 Do not open PRs on `akashnaren.github.io`.

@@ -39,19 +39,42 @@ observation the agent reads enters the model's context as input tokens, and
 every decision is emitted as output tokens. The application itself does not change
 across this loop. Only the *representation* of it that the agent reads does.
 
-Today that representation is almost always one built for humans. Agents are
-given screenshots to look at, or the accessibility and DOM trees that browsers
-expose for assistive technology, or a catalog of callable functions with no
-description of the current screen. Each of these inherits assumptions from its
-original purpose (pixels for human vision, verbose trees for screen readers,
-stateless function catalogs for programmatic callers). None was designed to
-let an agent see, cheaply and unambiguously, *what is true now and what may be
-done next.*
+Today that representation is almost always one built for humans. Three inherited
+channels dominate practice, and each fails the agent in a different way.
+
+1. **Screenshots** (our C1). The model must visually parse pixels and ground them
+   into click coordinates. Grounding is a known failure mode of GUI agents
+   (SeeClick; UI-TARS; Claude computer use). Image cost is a function of
+   viewport resolution, not of how much the page actually says, so a blank page
+   and a busy page at the same size cost the same. On the MiniShop viewport the
+   model-free baseline already prices one look at about 1105 image tokens,
+   versus a few hundred for a compact text document (Section 6.1).
+2. **Accessibility or DOM trees** (our C2). The model reads a verbose text tree
+   built for assistive technology. Mind2Web filters that tree because it is too
+   large; UIFormer measures UI representation at 80 to 99 percent of agent
+   token cost. The tree also names elements that the backend will reject, so
+   named clicks become illegal actions.
+3. **Flat tools** (our C3). The model gets function schemas and a short status
+   object, with no current-view document. This is close to how MCP exposes
+   capabilities. It is cheap per call once the schema is paid, but the model
+   must remember which view it is on, which actions are valid, and which
+   arguments are legal. That memory burden is light on a tiny store and is
+   expected to grow with application complexity.
+
+None of these three was designed to let an agent see, cheaply and
+unambiguously, *what is true now and what may be done next.* An
+**agent-native** alternative (our C4) is a view document authored from backend
+state: current view, entities, and affordances with `enabled` flags and argument
+schemas. It is not a better screenshot and not a pruned DOM. It is a
+projection of the same backend the grader already trusts.
 
 This paper takes the position that the interface representation is a **control
 variable**, not an unavoidable cost of automation, and that a representation
 authored for the agent can change how many tokens a task costs and how
-reliably it completes. To test this cleanly we hold everything else fixed (one
+reliably it completes. The applied stake is whether shipping such a surface
+(the way applications already ship an API) can pay for itself in tokens and
+errors. We do not answer that product question. We measure the underlying
+trade-off on one application. To test this cleanly we hold everything else fixed (one
 application, one task set, one deterministic grader, one model at a time,
 temperature zero) and vary only the representation across four conditions
 (Section 4). Two of these reuse the human interface (the screenshot (C1) and the
@@ -223,12 +246,14 @@ agent-authored surface, not the observation that representation has an effect.
 Execution-based grading is not new (WebArena, VisualWebArena, WebShop,
 AndroidWorld). Token-efficient UI representation is not new (UIFormer,
 Prune4Web). An agent-facing surface is already "in the air" (A2UI, MCP).
-Constrained or valid-action masking is an old idea in reinforcement learning
-and tool use; only the planned ablation that separates it from compactness is
-ours, and that ablation has not been run. Paper 2 (Agent Experience / AX) is
-largely synthesis: the individual metrics already exist. Scope (one synthetic
-store, ten tasks, one general model, a hand-authored C4) further bounds any
-novelty claim (Section 9).
+Constrained or valid-action masking is treated here as a known idea in
+reinforcement learning and tool use; only the planned ablation that separates
+it from compactness would be ours, and that ablation has not been run.
+TODO (citation to find, not asserted): a verified primary source for action
+masking or constrained decoding. No arXiv id is attached until one is checked.
+Paper 2 (Agent Experience / AX) is largely synthesis: the individual metrics
+already exist. Scope (one synthetic store, ten tasks, one general model, a
+hand-authored C4) further bounds any novelty claim (Section 9).
 
 ## 4. Study design
 
@@ -242,17 +267,37 @@ attempt them. The agent JSON API (`POST /agent/act`) is the only action channel
 for C3 and C4. C1 and C2 drive the human pages with Playwright and must not call
 that JSON API to act (`PROTOCOL.md`; `dualsurface/minishop/`).
 
-**Identification.** The design is a controlled A/B/C/D of *representation*.
-Everything PROTOCOL.md holds constant (application, task set, grader,
-temperature 0, step cap 20, history = task + prior actions + current observation)
-is held constant. The independent variable is the observation and action
-channel. C3 and C4 are matched in action grain: they expose the same operations
-(`open_product`, `set_size`, `add_to_cart`, `go_catalog`, `go_checkout`,
-`set_address`, `pay`). C3 omits the view document; C4 adds it. Any C3-versus-C4
-difference is therefore attributable to the document (current-view identity,
-per-action `enabled` flags, argument JSON Schemas), not to a different action
-vocabulary. Compactness and constraint-pruning remain confounded until the
-planned ablation (Section 6.5) is run.
+**Identification.** The design is a controlled A/B/C/D of *representation*. If we
+varied the application, the tasks, the grader, or the model at the same time as
+the interface, we could not say the interface caused the difference. PROTOCOL.md
+therefore holds the first group fixed and varies only the observation and
+action channel.
+
+**Table I1.** What is held fixed versus what is varied (pilot).
+
+| Held fixed | Varied |
+| --- | --- |
+| Application: MiniShop (one backend, one grader) | How the agent *sees* the store (image, tree, tools, view document) |
+| Task set (`tasks.json`, t01 to t10) | How the agent *acts* (pixel clicks vs named elements vs the shared C3/C4 action set) |
+| Execution-based grader over the order record | Presence of the C4 view document (C4 vs C3 only) |
+| One model per comparison; temperature 0; step cap 20 | |
+| History: task text, prior actions, current observation | |
+
+C1 and C2 reuse the human page, so their action vocabulary (coordinates, named
+elements) cannot match C3/C4. That is a real confound when comparing human
+surfaces to structured surfaces, and we state it as such. The comparison that
+isolates the *document* is C3 versus C4.
+
+**Why matched action grain between C3 and C4 matters.** C3 and C4 expose the
+same operations (`open_product`, `set_size`, `add_to_cart`, `go_catalog`,
+`go_checkout`, `set_address`, `pay`). C3 omits the view document; C4 adds it
+(current-view identity, per-action `enabled` flags, argument JSON Schemas). If
+C4 had a smaller or easier action set, a win for C4 could be "fewer buttons,"
+not "a better representation." Matched grain blocks that alternative
+explanation. What it does *not* yet separate is C4's two mechanisms,
+compactness versus constraint-pruning. Those remain confounded until the
+planned ablation (Section 6.5) is run. Models are never mixed across conditions
+in one comparison (`PROTOCOL.md`).
 
 **Conditions.** The same store is presented to the same model in four ways:
 
@@ -262,17 +307,6 @@ planned ablation (Section 6.5) is run.
 | C2 | Accessibility / DOM | Text tree of the human page | Click/fill named elements |
 | C3 | Flat tools | Function catalog only; no current-view document | Call those functions |
 | C4 | View document | JSON: view, state, entities, affordances | Invoke an enabled affordance with typed arguments |
-
-The flat tools (C3) and view document (C4) conditions expose the **same
-operations at the same grain**. C3 gives the model a
-flat catalog of functions (`open_product`, `set_size`, `add_to_cart`,
-`go_checkout`, `set_address`, `pay`, and related calls) and, after each call,
-only a short status object; the model must track the application's state itself.
-C4 gives the same operations but adds, on every step, a document naming the
-current view, the relevant state and entities, and the affordances available
-now, each with an `enabled` flag and an argument JSON Schema. Because the action
-set is identical, any C3-versus-C4 difference is attributable to the view
-document.
 
 **Tasks and grader.** Ten frozen tasks in
 `dualsurface/minishop/data/tasks.json` (seven expected to succeed, three
@@ -533,7 +567,12 @@ A deterministic "oracle" agent that replays the correct policy validates the ful
 measurement pipeline end to end and provides a best-case reference: both flat
 tools (C3) and the view document (C4) reach 100% success. This isolates apparatus
 correctness from model behavior, so any success deficit in the model run below is
-attributable to the model, not to the harness or grader.
+attributable to the model, not to the harness or grader. Two honesty caveats on
+oracle *tokens*: they are locally tokenized (`o200k_base`, tagged
+`"source": "local_tokenizer"`), not provider-billed; and C3's billed tool schema
+is omitted from the oracle input count because the loop sends schemas via the
+`tools` argument. `harness/obs_cost.py` is where that schema is counted. C1 and
+C2 are out of scope for the oracle (they need pixel or element oracles).
 
 ### 6.3 First model run: `gemini-2.5-flash` (N = 5)
 
@@ -541,6 +580,17 @@ We run one general model, `gemini-2.5-flash` (via Vertex, temperature 0, step ca
 20), across all four conditions on all ten tasks, five times each (200 runs in
 total). Table 1 reports the per-condition aggregate. The subsections that follow
 read it one metric at a time.
+
+**Figures (paths, not new numbers).** The human pages C1 and C2 observe are
+`docs/minishop/catalog.png`, `docs/minishop/product-blue-soldout-m.png`,
+`docs/minishop/checkout.png`, and `docs/minishop/confirmation.png`. Cost-reliability
+and paired C4-versus-C3 plots are produced by `python -m harness.report --figures`
+into `dualsurface/minishop/report/` (gitignored), including
+`gemini_repeats_pareto.png` and `gemini_c3_c4_paired.png` when those traces are
+present. Token-accounting figures from `harness/make_figures.py` are
+`image_tokens_vs_resolution.png` and `token_composition_by_condition.png`.
+None of these files is a second measurement. They render Section 6.1 and
+Table 1.
 
 **Table 1.** Per-condition results, `gemini-2.5-flash`, N=5 (95% CIs
 bootstrapped over the 50 task-repeat units per cell).
@@ -551,6 +601,18 @@ bootstrapped over the 50 task-repeat units per cell).
 | accessibility tree (C2) | 72% [60, 84] | ~6,770 [5,835, 9,714] | 7 | 0.198 | 0.116 |
 | flat tools (C3) | 100% [100, 100] | ~3,134 [3,118, 3,154] | 7 | 0.000 | 0.000 |
 | view document (C4) | 92% [84, 98] | ~4,455 [4,413, 4,491] | 6 | 0.016 | 0.000 |
+
+This is one cell in a planned model × application grid: one general model, one
+synthetic store. Coarse orderings (C1 dominated; C2 noisy; C3 and C4 both
+clear the human surface) are the robust reading. The fine C3-versus-C4 margin
+is provisional (Section 7).
+
+**Run-level spend (same sweep, not a new run).** Across 200 runs the traces sum
+to about 2.82M input tokens and 35k output tokens, about $0.93 at the
+gemini-2.5-flash rates recorded in the research plan ($0.30 per 1M input,
+$2.50 per 1M output). By condition: C1 2.11M in / 19.9k out; C2 385k / 9.4k;
+C3 138k / 1.7k; C4 193k / 4.1k. C1 alone is about 73% of the bill. Screenshots
+remain the dominant cost even before asking whether they succeed.
 
 #### Success
 
@@ -605,6 +667,13 @@ human tree invites named clicks and fills on elements the backend then rejects,
 and the model periodically returns responses the loop cannot parse. Keeping the
 malformed count separate (rather than silently coercing it to a no-op) is
 what makes C2's error composition honest.
+
+C1's illegal rate of 0.000 is not evidence that screenshots stay inside valid
+actions. A raw coordinate click rarely trips the backend's `illegal` flag, so
+C1's failure mode is in success, steps, and tokens (step-capped on every
+success task), not in that flag. C4's 0.016 illegal/step is the opposite
+signal: the backend *did* reject an action the document had already marked
+`enabled: false` (t10, below).
 
 #### Per-task breakdown
 
@@ -674,6 +743,14 @@ refuse correctly on all three, and the token and step differences are small with
 CIs that include zero. C4 keeps the fewest steps throughout, but on this small
 application that step saving does not offset its per-step token cost.
 
+**Pareto reading of this cell.** A point is dominated if another point is no
+more costly and at least as reliable. C3 is cheaper than C4 (input-token CI on
+the paired difference excludes zero) and at least as reliable (success CI
+includes zero, point estimate favors C3). C1 and C2 sit below and to the right
+of the C3/C4 cluster: more expensive, less reliable. H2's claim that C4 dominates
+is not supported in this cell. The open question is whether later cells (another
+model, an ablation, latency, a harder app) move C4 onto the frontier.
+
 #### What the t10 failure means, plainly
 
 Task t10 asks the agent to buy an item and ship it to an address. The valid
@@ -712,31 +789,64 @@ whether the step savings survive without the constraint information.
 
 ## 7. Discussion
 
-The provisional headline (that on the simplest application, with a model that
-ignores constraints, a flat tool catalog (C3) is preferred to the view document
-(C4) on tokens and success) should be read carefully. It is the *least
-favorable* setting for a purpose-built surface: the application's state is tiny
-and the tasks are short, so the burden C3 places on the model (tracking state
-itself) is light, while C4 pays a per-step cost to send a document the model
-barely needs.
+This section separates what the *present cell* implies from what *later cells*
+must show before H2 or H3 can be claimed.
 
-We therefore expect a crossover as conditions become less favorable to C3: with
-more complex applications (more views, more state, more opportunities for invalid
-actions), with models that respect the document's constraints, when cost is
-weighted by latency (where C4's fewer round trips help rather than hurt), and in
-safety-sensitive settings where preventing illegal actions is itself valuable.
-C4 already shows the mechanism here: it uses fewer steps and keeps a near-zero
-illegal-action rate.
+### 7.1 What this cell shows
 
-The t10 result (Section 6.3, "What the t10 failure means, plainly") is a finding
-in its own right: a truthful `enabled: false` flag was present and ignored. That
-the document *told the truth* (and agreed with the backend, an invariant we
-test) and the model *still acted against it* is precisely the kind of
-agent-experience signal a metric suite should capture. It also names a
-concrete, model-comparable quantity, the **ignored-affordance rate** (how often
-a model attempts an action the interface marked unavailable), which the
-second model run (Section 6.4) is designed to measure and which motivates the
-second paper.
+The cell is `gemini-2.5-flash` × MiniShop, N=5, ten tasks. On that cell:
+
+- **RQ1 is supported at a coarse grain.** Representation changes success,
+  tokens, steps, and illegal or malformed rates. C1 is about 10 times C4 and
+  about 15 times C3 in median input tokens, succeeds 30% [18, 42], and hits the
+  step cap on every success task. C2 is 72% [60, 84] with the highest illegal
+  and malformed rates. C3 and C4 both clear the human surface.
+- **RQ2, C1 and C2.** The human-surface conditions are dominated by the
+  structured conditions on this cell. That part of H2 holds here.
+- **RQ2, C4 versus C3.** H2's specific claim that C4 dominates is *not* supported.
+  C3 is Pareto-preferred on tokens and success. C4's documented mechanism
+  (fewer steps, −1.17 per success task, CI excludes 0) is present and not large
+  enough to offset +1,404 input tokens per success task.
+- **t10 is model behavior.** The C4 document advertised `set_address` as
+  `enabled: false` on the product view; the backend rejected the same call; a
+  test pins the agreement. The model ignored the flag on 4 of 5 main-sweep
+  repeats and 5 of 5 diagnostic repeats. A surface that is truthful does not
+  help a model that does not read `enabled`.
+
+The provisional headline (C3 preferred to C4 on tokens and success) is the
+*least favorable* setting for a purpose-built surface: tiny state, short tasks,
+and a model that ignores constraints. C3's memory burden is light. C4 still
+pays to send a growing document.
+
+### 7.2 What later cells must show
+
+These are predictions, not results. No number below is measured yet.
+
+1. **Second general model, N=5 (RQ3 / H3).** If another general model *obeys*
+   `enabled: false` on t10, C4's success should rise toward C3's on this app,
+   and the ignored-affordance rate should fall. If it still misses the flag,
+   the t10 failure is not unique to `gemini-2.5-flash`. Either outcome is
+   informative. The cell must still be reported as model × condition, never
+   pooled. If the model lacks vision, drop C1 and state that limit
+   (`PROTOCOL.md`).
+2. **C4 ablation.** Strip `enabled` flags and argument enums, keep view and
+   entities. If C4 remains more expensive than C3, the token overhead is
+   document growth (compactness), not the constraint payload. If step savings
+   disappear, the step win was constraint-carrying. Until this run exists,
+   compactness and constraints stay confounded.
+3. **Latency.** Token Pareto can disagree with time Pareto. C4 uses fewer
+   round trips. A timed re-run could move the C3-versus-C4 verdict without
+   changing Table 1's token ranks.
+4. **A second, more complex application.** MiniShop is C4's least favorable
+   case. A store with more views, more state, and more ways to act illegally
+   is where C3's runtime tracking tax is hypothesized to grow. Without that
+   cell, "C3 wins on simple apps" must not be read as "do not ship C4."
+
+We therefore treat C4's fewer steps and near-zero illegal-action rate as
+*mechanism present, not yet decisive* on cost. The crossover is expected where
+models respect constraints, where round trips are priced, or where the
+application is no longer tiny. That is a hypothesis for later cells, not a
+finding of this one.
 
 ## 8. Adopting the view document (C4): paths and complexity for existing and future applications
 
@@ -936,8 +1046,21 @@ from total input tokens.
 are averaged over five repeats. On this run, C3 was stable across repeats;
 C4's only variance is t10; C2 is the noisy condition.
 
-**Latency.** Latency is not yet instrumented. It is expected to weight round trips
-differently from token cost and could move the C3-versus-C4 comparison.
+**History truncation.** PROTOCOL.md limits history to task text, prior
+actions, and the current observation. That choice holds the history policy
+fixed across conditions. It also means C3 cannot compensate by accumulating
+a long transcript of past views. A different history policy could change C3
+versus C4 and is not tested.
+
+**C1 illegal-action metric.** Coordinate clicks on the human page rarely set
+the backend `illegal` flag, so C1's illegal/step of 0.000 understates invalid
+attempts relative to C3/C4. For C1, read success, steps, and input tokens.
+
+**Statistical power.** Bootstrap CIs on paired differences resample over 7
+success tasks (and 3 refusal tasks). They are wide by construction. A CI that
+includes zero (C4 minus C3 success) is not proof of equality; it is a failure
+to distinguish at this sample size. We do not claim significance we do not
+have.
 
 **Models.** The main line uses general models that can do all four conditions in
 one API. Specialized computer-use models are out of the main line until the
@@ -963,6 +1086,8 @@ and the environment is defined in `.cursor/`. See
 [`paper-outline.md`](paper-outline.md) for section status. A web ingest export
 for Profile Engineer is [`web/article.md`](web/article.md)
 (https://akashnaren.github.io/research/; do not open PRs on that site from here).
+`python papers/agent-native-ui/build.py` rebuilds `paper.html` and `paper.pdf`
+only. It does not overwrite `web/article.md`.
 
 ## References
 
