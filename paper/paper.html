@@ -186,10 +186,120 @@ usable action), tracked separately so that model formatting failures are not
 silently absorbed.</p>
 <p><strong>Token accounting.</strong> Total input tokens decompose per step into a roughly
 constant overhead (system prompt, task, prior actions) plus the current
-observation, whose size varies by condition. Total cost is therefore
-approximately the per-step observation cost times the number of steps, which
-makes explicit that a representation can win either by being lighter per step or
-by needing fewer steps.</p>
+observation, whose size varies by condition:</p>
+<pre><code>input_tokens(run) ≈ sum over steps of
+    [ (system + task + prior actions)   # fixed overhead
+      + current_observation ]           # varies by condition
+</code></pre>
+<p>Total cost is therefore approximately the per-step observation cost times the
+number of steps, which makes explicit that a representation can win either by
+being lighter per step or by needing fewer steps. Below we make precise how the
+observation term is counted for each condition, because the <em>text</em> conditions
+and the <em>spatial</em> (image) condition are counted in fundamentally different ways.</p>
+<p><em>Text conditions (C2, C3, C4) — tokenizer-based.</em> The observation is serialized
+text (an accessibility tree, a tool-result status object, or a JSON view
+document), so its token count is exactly the length of that serialized content
+under the model's tokenizer (we use <code>o200k_base</code> for the deterministic
+baseline). Cost therefore scales with <em>how much content the representation
+serializes</em>. The per-step decomposition is the same fixed overhead as above plus
+the condition-specific part: <strong>C3 additionally pays the full tool schema on
+every call</strong> (the harness sends the function definitions with each request), and
+<strong>C4 pays for the view document</strong> (view, state, entities, and per-affordance
+<code>enabled</code> flags and argument schemas). C2 pays for the verbose human
+accessibility tree. Reconstructing the canonical path deterministically, the
+median per-step input splits (o200k_base) are:</p>
+<table>
+<thead>
+<tr>
+<th>condition</th>
+<th>system</th>
+<th>task+prior</th>
+<th>tool schema</th>
+<th>observation</th>
+<th>per-step total</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>C1 (screenshot, est.)</td>
+<td>186</td>
+<td>62</td>
+<td>–</td>
+<td>1105 (image)</td>
+<td>1353</td>
+</tr>
+<tr>
+<td>C2 (a11y tree, measured)</td>
+<td>188</td>
+<td>62</td>
+<td>–</td>
+<td>~650 (tree)</td>
+<td>~900</td>
+</tr>
+<tr>
+<td>C3 (flat tools)</td>
+<td>159</td>
+<td>62</td>
+<td>490</td>
+<td>25</td>
+<td>736</td>
+</tr>
+<tr>
+<td>C4 (view document)</td>
+<td>188</td>
+<td>62</td>
+<td>–</td>
+<td>422</td>
+<td>672</td>
+</tr>
+</tbody>
+</table>
+<p>The C3 row shows the tool schema (490 tokens) dwarfing its tiny status
+observation (25 tokens); the C4 row shows the document (422 tokens) as its whole
+condition-specific cost. C2's tree is <em>measured</em> from run traces because it
+requires a live browser to render; the other three are reconstructed
+deterministically with no model call.</p>
+<p><em>Spatial/image condition (C1) — tiling-based, not tokenizer-based.</em> A screenshot
+is not tokenized as text. Vision models charge image tokens by a <strong>tiling</strong>
+model that is a function of the image's <em>resolution</em>, not its content. For the
+OpenAI gpt-4o family the rule is: downscale the image to fit within a
+2048×2048 box, then scale its shortest side to ~768px, then cover the result in
+512×512 tiles, and charge</p>
+<pre><code>image_tokens ≈ base + per_tile × tiles
+</code></pre>
+<p>with high-detail <code>base = 85</code> and <code>per_tile = 170</code> (low detail is a flat 85
+regardless of resolution). Two implications are central to this study:</p>
+<ol>
+<li>
+<p><strong>Image-token cost is a function of resolution/viewport, not of visual
+   complexity or information content.</strong> A blank page and a busy page rendered at
+   the same viewport produce the identical tile count and therefore the
+   identical cost. A screenshot cannot get <em>cheaper</em> by showing less, only by
+   being sent at a lower resolution or in low detail — the opposite of the text
+   conditions, where a leaner representation is directly cheaper. Because of the
+   768px shortest-side rescale, high-detail cost also <strong>plateaus</strong>: at our
+   1280×800 viewport it is 6 tiles (≈1105 tokens), and wider 16:9 viewports
+   (1536×864, 1920×1080) still cost 6 tiles.</p>
+</li>
+<li>
+<p><strong>Provider reporting differs, so C1's cost must be read from total input
+   tokens.</strong> OpenAI <em>itemizes</em> image tokens in a dedicated usage field, whereas
+   Vertex/Gemini <em>folds</em> them into <code>prompt_tokens</code>. This is why our observed
+   <code>gemini-2.5-flash</code> C1 runs report <code>image_tokens = 0</code> yet an input of ~46k
+   tokens per task: the image is fully billed, just not itemized. The harness
+   reads a dedicated <code>image_tokens</code> field when present and otherwise leaves it
+   null (<code>harness/openai_compat.py::extract_usage</code>); comparisons anchor on total
+   input tokens and treat the itemized image count as secondary.</p>
+</li>
+</ol>
+<p>These tiling constants are <strong>provider- and model-specific</strong> — Anthropic and
+Google use different resolution rules and per-tile costs — so we present the
+gpt-4o numbers as a concrete, labeled estimate and do not claim a single
+universal image-token formula. <code>harness/obs_cost.py</code> computes the estimate
+across a resolution sweep and the per-condition composition above deterministically;
+<code>harness/make_figures.py</code> renders them as <code>image_tokens_vs_resolution.png</code> (the
+resolution curve) and <code>token_composition_by_condition.png</code> (the stacked
+composition).</p>
 <p><strong>Analysis.</strong> We report a per-<code>(model, condition)</code> table and a cost–reliability
 Pareto frontier (median input tokens vs success rate). Because the same tasks run
 under every condition, we compute <strong>paired per-task</strong> differences between C4 and

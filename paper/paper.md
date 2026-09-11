@@ -155,7 +155,11 @@ silently absorbed.
 constant overhead (system prompt, task, prior actions) plus the current
 observation, whose size varies by condition:
 
-$$\text{input\_tokens(run)} \approx \sum_{\text{steps}} \big[\underbrace{\text{system} + \text{task} + \text{prior actions}}_{\text{fixed overhead}} + \underbrace{\text{current observation}}_{\text{varies by condition}}\big].$$
+```
+input_tokens(run) ≈ sum over steps of
+    [ (system + task + prior actions)   # fixed overhead
+      + current_observation ]           # varies by condition
+```
 
 Total cost is therefore approximately the per-step observation cost times the
 number of steps, which makes explicit that a representation can win either by
@@ -196,7 +200,9 @@ OpenAI gpt-4o family the rule is: downscale the image to fit within a
 2048×2048 box, then scale its shortest side to ~768px, then cover the result in
 512×512 tiles, and charge
 
-$$\text{image\_tokens} \approx \text{base} + \text{per\_tile}\times\text{tiles},$$
+```
+image_tokens ≈ base + per_tile × tiles
+```
 
 with high-detail `base = 85` and `per_tile = 170` (low detail is a flat 85
 regardless of resolution). Two implications are central to this study:
