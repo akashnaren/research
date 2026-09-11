@@ -112,6 +112,63 @@ Output tokens and illegal actions are reported separately: illegal actions are
 backend rejections and are the cleanest signal that a representation is leading
 the model to attempt things that are not currently valid.
 
+### Per-condition input-token calculation
+
+The `current_observation` term is counted differently for the text conditions
+and the spatial (image) condition. Both are implemented deterministically in
+`harness/obs_cost.py` (no model call, `o200k_base` tokenizer).
+
+**Text conditions (C2, C3, C4) — tokenizer-based.** The observation is
+serialized text, so its cost is exactly the token length of that content, and it
+scales with how much the representation serializes. Per step, each condition
+pays the fixed overhead (system prompt + task + prior actions) plus:
+
+- **C2**: the human accessibility tree (verbose; measured, needs a live
+  browser).
+- **C3**: a short tool-result status object *and* the full tool schema, which
+  the harness resends on **every** call (`harness/model_loop.py` passes `tools=`
+  each request; the provider bills it). The schema, not the status object, is
+  C3's dominant per-step cost.
+- **C4**: the view document (view, state, entities, and per-affordance `enabled`
+  flags + argument JSON Schemas). No schema is resent; the document *is* the
+  condition-specific cost.
+
+Deterministic median per-step split along the canonical success path
+(`python -m harness.obs_cost`, o200k_base):
+
+| condition | system | task+prior | tool schema | observation | per-step total |
+| --- | --- | --- | --- | --- | --- |
+| C1 (screenshot, est.) | 186 | 62 | – | 1105 (image) | 1353 |
+| C2 (a11y tree, measured) | 188 | 62 | – | ~650 (tree) | ~900 |
+| C3 (flat tools) | 159 | 62 | 490 | 25 | 736 |
+| C4 (view document) | 188 | 62 | – | 422 | 672 |
+
+**Spatial/image condition (C1) — tiling-based, not tokenizer-based.** A
+screenshot is charged image tokens by a provider-specific **tiling** model that
+depends on the image's *resolution*, not its content. For the OpenAI gpt-4o
+family: downscale to fit 2048×2048, scale the shortest side to ~768px, count
+512×512 tiles, and charge `tokens ≈ base + per_tile × tiles` (high detail
+`base = 85`, `per_tile = 170`; low detail is a flat 85). Two implications drive
+the study's cost story:
+
+1. **Cost is a function of resolution/viewport, not visual complexity or
+   information content.** A blank and a busy page at the same viewport cost the
+   same; a screenshot can only get cheaper by lowering resolution or detail, not
+   by showing less. `image_tokens_by_resolution()` sweeps this
+   (640×480 → 425 tok / 2 tiles; 1024×768 → 765 / 4; 1280×800 → 1105 / 6), and
+   it **plateaus** at 6 tiles for wider 16:9 viewports (1536×864, 1920×1080)
+   because of the 768px shortest-side rescale.
+2. **Provider reporting differs.** OpenAI itemizes image tokens; Vertex/Gemini
+   folds them into `prompt_tokens`. This is why the observed `gemini-2.5-flash`
+   C1 runs show `image_tokens = 0` but ~46k input tokens per task — the image is
+   billed, not itemized (see §4). Cost comparisons therefore anchor on total
+   input tokens.
+
+These constants are **provider- and model-specific**; the gpt-4o numbers are a
+labeled estimate, not a universal formula. `harness/obs_cost.py::measure_composition`
+produces the per-condition split above and `harness/make_figures.py` renders
+`image_tokens_vs_resolution.png` and `token_composition_by_condition.png`.
+
 ## 4. Metrics (dependent variables)
 
 From `PROTOCOL.md`, per run:
@@ -133,7 +190,15 @@ tokens in a separate usage field; some fold them into `prompt_tokens`. The
 harness reads a dedicated `image_tokens` field when present and otherwise
 leaves it null (`harness/openai_compat.py::extract_usage`). When comparing C1
 across providers, report total input tokens as the primary cost and treat the
-itemized image-token count as secondary and provider-dependent.
+itemized image-token count as secondary and provider-dependent. The full
+per-condition input-token calculation — the text conditions' tokenizer-based
+counting and the C1 tiling model, its resolution-driven cost, and the plateau
+behavior — is in §3, "Per-condition input-token calculation". The key
+consequence for C1 is that its image tokens are set by the *viewport
+resolution*, not by what is on screen, so a screenshot's cost cannot be reduced
+by showing less content; and because Vertex/Gemini folds those tokens into
+`prompt_tokens`, the observed C1 `image_tokens = 0` alongside a ~46k input is a
+reporting artifact, not evidence that C1 is cheap.
 
 ## 5. How to present the results
 

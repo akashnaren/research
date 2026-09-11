@@ -153,10 +153,81 @@ silently absorbed.
 
 **Token accounting.** Total input tokens decompose per step into a roughly
 constant overhead (system prompt, task, prior actions) plus the current
-observation, whose size varies by condition. Total cost is therefore
-approximately the per-step observation cost times the number of steps, which
-makes explicit that a representation can win either by being lighter per step or
-by needing fewer steps.
+observation, whose size varies by condition:
+
+$$\text{input\_tokens(run)} \approx \sum_{\text{steps}} \big[\underbrace{\text{system} + \text{task} + \text{prior actions}}_{\text{fixed overhead}} + \underbrace{\text{current observation}}_{\text{varies by condition}}\big].$$
+
+Total cost is therefore approximately the per-step observation cost times the
+number of steps, which makes explicit that a representation can win either by
+being lighter per step or by needing fewer steps. Below we make precise how the
+observation term is counted for each condition, because the *text* conditions
+and the *spatial* (image) condition are counted in fundamentally different ways.
+
+*Text conditions (C2, C3, C4) — tokenizer-based.* The observation is serialized
+text (an accessibility tree, a tool-result status object, or a JSON view
+document), so its token count is exactly the length of that serialized content
+under the model's tokenizer (we use `o200k_base` for the deterministic
+baseline). Cost therefore scales with *how much content the representation
+serializes*. The per-step decomposition is the same fixed overhead as above plus
+the condition-specific part: **C3 additionally pays the full tool schema on
+every call** (the harness sends the function definitions with each request), and
+**C4 pays for the view document** (view, state, entities, and per-affordance
+`enabled` flags and argument schemas). C2 pays for the verbose human
+accessibility tree. Reconstructing the canonical path deterministically, the
+median per-step input splits (o200k_base) are:
+
+| condition | system | task+prior | tool schema | observation | per-step total |
+| --- | --- | --- | --- | --- | --- |
+| C1 (screenshot, est.) | 186 | 62 | – | 1105 (image) | 1353 |
+| C2 (a11y tree, measured) | 188 | 62 | – | ~650 (tree) | ~900 |
+| C3 (flat tools) | 159 | 62 | 490 | 25 | 736 |
+| C4 (view document) | 188 | 62 | – | 422 | 672 |
+
+The C3 row shows the tool schema (490 tokens) dwarfing its tiny status
+observation (25 tokens); the C4 row shows the document (422 tokens) as its whole
+condition-specific cost. C2's tree is *measured* from run traces because it
+requires a live browser to render; the other three are reconstructed
+deterministically with no model call.
+
+*Spatial/image condition (C1) — tiling-based, not tokenizer-based.* A screenshot
+is not tokenized as text. Vision models charge image tokens by a **tiling**
+model that is a function of the image's *resolution*, not its content. For the
+OpenAI gpt-4o family the rule is: downscale the image to fit within a
+2048×2048 box, then scale its shortest side to ~768px, then cover the result in
+512×512 tiles, and charge
+
+$$\text{image\_tokens} \approx \text{base} + \text{per\_tile}\times\text{tiles},$$
+
+with high-detail `base = 85` and `per_tile = 170` (low detail is a flat 85
+regardless of resolution). Two implications are central to this study:
+
+1. **Image-token cost is a function of resolution/viewport, not of visual
+   complexity or information content.** A blank page and a busy page rendered at
+   the same viewport produce the identical tile count and therefore the
+   identical cost. A screenshot cannot get *cheaper* by showing less, only by
+   being sent at a lower resolution or in low detail — the opposite of the text
+   conditions, where a leaner representation is directly cheaper. Because of the
+   768px shortest-side rescale, high-detail cost also **plateaus**: at our
+   1280×800 viewport it is 6 tiles (≈1105 tokens), and wider 16:9 viewports
+   (1536×864, 1920×1080) still cost 6 tiles.
+
+2. **Provider reporting differs, so C1's cost must be read from total input
+   tokens.** OpenAI *itemizes* image tokens in a dedicated usage field, whereas
+   Vertex/Gemini *folds* them into `prompt_tokens`. This is why our observed
+   `gemini-2.5-flash` C1 runs report `image_tokens = 0` yet an input of ~46k
+   tokens per task: the image is fully billed, just not itemized. The harness
+   reads a dedicated `image_tokens` field when present and otherwise leaves it
+   null (`harness/openai_compat.py::extract_usage`); comparisons anchor on total
+   input tokens and treat the itemized image count as secondary.
+
+These tiling constants are **provider- and model-specific** — Anthropic and
+Google use different resolution rules and per-tile costs — so we present the
+gpt-4o numbers as a concrete, labeled estimate and do not claim a single
+universal image-token formula. `harness/obs_cost.py` computes the estimate
+across a resolution sweep and the per-condition composition above deterministically;
+`harness/make_figures.py` renders them as `image_tokens_vs_resolution.png` (the
+resolution curve) and `token_composition_by_condition.png` (the stacked
+composition).
 
 **Analysis.** We report a per-`(model, condition)` table and a cost–reliability
 Pareto frontier (median input tokens vs success rate). Because the same tasks run
