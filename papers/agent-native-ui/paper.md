@@ -1,265 +1,299 @@
 # The Interface Is a Variable: Measuring the Cost and Reliability of Purpose-Built UI Representations for LLM Agents
 
-*Working draft. Authors: TBD.*
-
-Reported numbers are from one model (`gemini-2.5-flash`) on one synthetic
-store and should be read as a first data point, not as a finished claim about
-all agents or all applications.
-
 ## Abstract
 
-Language-model agents often operate software through interfaces built for
-people: a screenshot (C1), an accessibility tree (C2), or a catalog of tools.
-We treat the *representation* itself (how the application shows state and
-available actions) as the thing to vary, not as a fixed cost of automation.
-Holding the store, the tasks, and a deterministic grader fixed, we compare
-four views of the same shop: screenshot (C1), accessibility tree (C2),
-flat tools (C3), and a purpose-built JSON view document (C4) that names the
-current screen and which actions are allowed on it. We measure success,
-token cost, steps, and illegal actions (calls the backend rejects).
-
-On this first model, the human surfaces lose. Screenshot (C1) costs about
-ten times the cheapest condition and completes fewer than a third of tasks.
-Accessibility tree (C2) is cheaper than a screenshot but noisy. Between the
-two structured conditions the trade-off is smaller: view document (C4) uses
-fewer steps, yet costs more tokens than flat tools (C3) and does not improve
-success. We treat this as a measurement method plus one cell, and we say
-where a purpose-built agent surface is still expected to help.
+Language-model agents usually operate software through interfaces built for
+people. They read screenshots, accessibility trees, or raw HTML, and they act
+by clicking and typing. This paper treats the interface representation, the
+form in which an application shows its state and its available actions to an
+agent, as an experimental variable rather than as a fixed cost of automation.
+We hold a small online store, its ten tasks, and a deterministic grader
+constant, and present the same store to the same model in four ways: a
+screenshot (C1), an accessibility tree (C2), flat tools (C3), and a
+purpose-built JSON view document (C4) that states which screen the agent is
+on and which actions are allowed right now. We measure task success, token
+cost, step count, and illegal actions, and we read the results as a
+cost-reliability frontier: a representation earns its place only if nothing
+else is both cheaper and at least as reliable. On the first model measured,
+the two human surfaces are dominated. The screenshot (C1) costs roughly ten
+times the tokens of the cheapest condition and completes fewer than a third
+of its tasks. The accessibility tree (C2) is cheaper than pixels but
+error-prone. Between the structured conditions the verdict is closer: the
+view document (C4) finishes tasks in fewer steps, but it spends more tokens
+than flat tools (C3) and does not improve success, so flat tools (C3) is
+preferred on this store. All numbers come from one general model
+(`gemini-2.5-flash`) on one synthetic store. We present them as a
+measurement method and a first data point, and we identify the conditions
+under which a purpose-built agent surface should begin to pay off.
 
 ## 1. Introduction
 
-An agent that uses software repeats a short loop. It looks at the
-application, chooses one action, takes that action, and looks again. Each
-look is billed as input tokens. The shop does not change across that loop.
-Only the *form* of the look changes.
+An agent that operates software runs a loop. It looks at the application,
+decides on one action, performs that action, and looks again. Every look
+enters the model as input tokens, and every decision is billed as output
+tokens. Across the loop the application itself does not change. The only
+thing that changes is the form in which the agent sees it.
 
-Today that form is almost always one built for people. Three inherited
-channels dominate, and each fails the agent in a different way.
+That form is almost always inherited from software built for people. Three
+channels dominate practice today, and each fails the agent in its own way.
 
-1. **screenshot (C1).** The model sees pixels and must click coordinates.
-   Grounding those clicks is a known failure mode (SeeClick, UI-TARS, Claude
-   computer use). Image cost tracks the size of the viewport, not how much
-   the page actually says, so a blank page and a busy page at the same size
-   cost the same.
-2. **accessibility tree (C2).** The model reads a text tree built for
-   assistive technology. The tree is often huge (Mind2Web filters it;
-   UIFormer finds that UI text is 80 to 99 percent of agent token cost). It
-   also names controls the backend will reject, so named clicks become
-   illegal actions.
-3. **flat tools (C3).** The model gets function schemas and a short status
-   object, with no description of the current screen. This is close to how
-   MCP exposes capabilities. It is cheap per call once the schema is paid,
-   but the model must remember which view it is on and which arguments are
-   legal.
+1. **Screenshot (C1).** The model sees pixels and must translate intent
+   into click coordinates. Grounding those clicks is a well-documented
+   failure mode of GUI agents (SeeClick, UI-TARS, Claude computer use).
+   Worse, image cost tracks the size of the viewport rather than the amount
+   of information on the page, so a blank page and a busy page at the same
+   window size cost exactly the same.
+2. **Accessibility tree (C2).** The model reads the text tree that
+   assistive technology uses. The tree is verbose. Mind2Web filters it
+   because it is too large to send whole, and UIFormer measures interface
+   text at 80 to 99 percent of an agent's total token cost. The tree also
+   names controls that the backend will reject, which turns confident
+   clicks into errors.
+3. **Flat tools (C3).** The model receives a catalog of function schemas
+   and a short status object after each call, with no description of the
+   current screen. This is close to how the Model Context Protocol exposes
+   capabilities. It is cheap per call once the schema is paid for, but the
+   model must remember on its own which view it is on, which actions are
+   currently valid, and which arguments are legal.
 
-None of these three was designed to answer, cheaply and clearly, *what is
-true now and what may be done next.*
+None of these channels was designed to answer, cheaply and unambiguously,
+the two questions an agent asks at every step: *what is true right now, and
+what may I do next?*
 
-**view document (C4)** is the alternative we measure. It is a JSON object
-authored from backend state: the current view, the entities on it, and
-each action with an `enabled` flag and an argument schema. It is not a
-better screenshot. It is not a pruned DOM. It is a projection of the same
-backend the grader already trusts.
+The alternative we measure is a **view document (C4)**: a JSON object
+generated from backend state that names the current view, lists the
+entities on it, and lists every action with an `enabled` flag and a schema
+for its arguments. It is not a better screenshot, and it is not a pruned
+DOM. It is a projection of the same backend state that the grader already
+trusts. Section 4.1 shows a real one.
 
-The product question (should applications ship this the way they ship an
-API?) is motivation, not the contribution. The contribution is a measurement:
-hold the store, the tasks, and the grader fixed, vary only the
-representation, and read a cost-reliability frontier. A representation
-sits on that frontier only if nothing else is both cheaper and at least as
-reliable.
+Whether applications should ship such a surface, the way they already ship
+an API, is the motivating product question. It is not the contribution.
+The contribution is a measurement. We hold the store, the tasks, the
+grader, and the model fixed, vary only the representation, and read the
+outcome on a cost-reliability frontier, where a representation survives
+only if nothing else is both cheaper and at least as reliable.
 
-**What we hold still, and what we change.** One shop (MiniShop), ten frozen
-tasks, one deterministic grader over backend orders, one model at a time,
-temperature zero, a cap of twenty steps. History is the task, prior
-actions, and the current observation. The only thing that changes is how
-the agent sees and acts: screenshot (C1), accessibility tree (C2),
-flat tools (C3), or view document (C4).
+**The experiment in one paragraph.** One synthetic store (MiniShop), ten
+frozen tasks (seven that should succeed, three that should be refused),
+one deterministic grader that inspects backend order records, one model at
+a time, temperature zero, at most twenty steps per task. The agent's
+memory is the task text, its prior actions, and the current observation.
+The only thing that varies is how the agent sees and acts: screenshot
+(C1), accessibility tree (C2), flat tools (C3), or view document (C4).
+The two structured conditions expose exactly the same seven operations, so
+any difference between them is the document, not a different set of
+buttons.
 
-**What we found on this cell.** Human surfaces are dominated. Screenshot (C1)
-never completes a success task and costs on the order of 46k input tokens.
-Accessibility tree (C2) succeeds more often but mixes illegal calls and
-malformed replies. Flat tools (C3) is perfect here. View document (C4)
-nearly matches it, uses fewer steps, costs more tokens, and fails one task
-because the model ignored `enabled: false`. Hypothesis H2 (that view
-document (C4) dominates) is not supported on this model and this shop.
-Whether that ordering holds on other models is untested.
+**What we found, in brief.** On the first model measured, the human
+surfaces lose decisively. The screenshot (C1) never completes a purchase
+task and costs about 46,000 input tokens per task. The accessibility tree
+(C2) succeeds more often but commits the most illegal and malformed
+actions. Flat tools (C3) completes every task. The view document (C4)
+nearly matches it, uses the fewest steps of any condition, costs more
+tokens than flat tools (C3), and fails exactly one task, because the model
+ignored an action that the document had clearly marked as unavailable.
+These numbers are one cell of a larger planned grid, one model crossed
+with one application, and we treat them accordingly.
 
 **Contributions.**
 
-1. A controlled comparison at *matched action grain*: flat tools (C3) and
-   view document (C4) expose the same operations, so a win for view document
-   (C4) cannot be "fewer buttons."
-2. A cost-reliability reading with paired per-task intervals, rather than
-   a success-only leaderboard.
-3. First evidence on one shop and one model, including a model-free
-   observation-cost baseline and an execution-based grader.
+1. A controlled method for comparing interface representations at *matched
+   action grain*: flat tools (C3) and view document (C4) expose identical
+   operations, so a win for the document cannot be explained by a smaller
+   or simpler action set.
+2. A cost-reliability reading with paired per-task inference, rather than
+   a success-only leaderboard: conditions are compared task by task with
+   bootstrap confidence intervals.
+3. First evidence on one store and one model, anchored by a model-free
+   observation-cost baseline (what each representation costs to read
+   before any model is involved) and a deterministic execution grader.
 
-**Questions.**
+**Research questions.**
 
-- **RQ1.** Does the representation change tokens, steps, success, and
-  illegal actions on a fixed task set?
+- **RQ1.** Does the representation change token cost, step count, task
+  success, and illegal-action rate on a fixed task set?
 - **RQ2.** Is some representation cheaper and at least as reliable as
-  reusing the human page? In particular, does view document (C4) dominate
-  screenshot (C1) and accessibility tree (C2)?
-- **RQ3.** Is the ordering stable across general models?
+  reusing the human page? In particular, does the view document (C4)
+  dominate the screenshot (C1) and the accessibility tree (C2)?
+- **RQ3.** Does the ordering of conditions hold across general models, or
+  is it an artifact of one model?
 
-The matching hypotheses are H1 (cost and reliability differ), H2 (view
-document (C4) is on the frontier and screenshot (C1) is dominated), and H3
-(the *order* of conditions is stable across models even if the *size* of
-the gap is not). On this first model, H1 holds at a coarse grain (human
-surfaces versus structured ones). H2 does not hold for view document (C4)
-versus flat tools (C3). H3 is untested.
+The matching hypotheses: **H1**, cost and reliability differ across
+conditions. **H2**, the view document (C4) sits on the cost-reliability
+frontier and the screenshot (C1) is dominated. **H3**, the ordering of
+conditions is stable across general models even if the size of the gaps
+is not. On this first model, H1 holds at a coarse grain (human surfaces
+versus structured ones). H2 does not hold in full: the view document (C4)
+beats the human surfaces but not flat tools (C3). H3 is untested.
 
-**How to read the rest.** Section 2 defines terms. Section 3 places the
-work. Section 4 describes MiniShop and the four conditions, with a real
-view document (C4) example. Section 5 defines metrics. Section 6 reports
-results. Section 7 says what this cell shows and what later cells must
-show. Section 8 sketches how an application could ship a view document.
-Section 9 lists limits.
+**How the paper is organized.** Section 2 collects the terms used
+throughout. Section 3 places the study among prior work. Section 4
+describes the store, the conditions, the tasks, and a real view document
+(C4). Section 5 defines the metrics and the analysis. Section 6 reports
+results in three layers: a model-free baseline, an oracle control, and
+the model run. Section 7 separates what this cell shows from what later
+cells must show. Section 8 describes how a real application could ship a
+view document (C4). Sections 9 and 10 cover limitations and future work.
 
-## 2. Important terms
+## 2. Terms used in this paper
 
-We use the same labels everywhere: method name, then the condition id.
+Conditions are always written as method name plus identifier.
 
-- **screenshot (C1).** A picture of the human page. The agent clicks,
-  types, and scrolls.
-- **accessibility tree (C2).** A text tree of that page (roles and names).
-  The agent clicks or fills named elements.
-- **flat tools (C3).** A catalog of functions and a short status object. No
-  current-view document. The model must track state itself.
-- **view document (C4).** A JSON object with `view`, `state`, `entities`,
-  and `affordances`. Each affordance has an `enabled` flag and an argument
-  schema.
-- **Affordance.** An action the interface exposes (`open_product`,
-  `set_size`, `pay`, and so on).
-- **Enabled flag.** Whether that action is valid in the current state.
-- **Matched action grain.** Flat tools (C3) and view document (C4) offer
-  the same operations. Differences between them come from the document,
-  not from a different button set.
-- **Illegal action.** The backend rejects the call (HTTP 400).
-- **Malformed action.** The model reply is not a usable action (wrong
-  shape). Tracked separately from illegal actions.
-- **Ignored-affordance rate.** How often the model tries an action marked
-  unavailable. Task t10 is the running example.
-- **Step.** One observe, decide, act cycle. The cap is 20.
-- **Execution-based grader.** A checker over backend orders. Never another
-  model.
-- **Cost-reliability frontier.** Token cost versus success. A point is on
-  the frontier if nothing is both cheaper and at least as reliable.
-- **Refusal task.** The correct behavior is to decline. Reported separately,
-  because doing nothing can pass.
+- **Screenshot (C1).** A rendered image of the human page. The agent
+  clicks coordinates, types, and scrolls.
+- **Accessibility tree (C2).** The text tree of that page (roles and
+  names). The agent clicks or fills named elements.
+- **Flat tools (C3).** A catalog of callable functions plus a short status
+  object per call. No description of the current view.
+- **View document (C4).** A JSON object with `view`, `state`, `entities`,
+  and `affordances`, generated from backend state.
+- **Affordance.** One action the interface exposes, such as
+  `open_product` or `pay`, with an `enabled` flag and an argument schema.
+- **Matched action grain.** Flat tools (C3) and view document (C4) expose
+  the same seven operations, so differences between them come from the
+  document alone.
+- **Illegal action.** An action the backend rejects.
+- **Malformed action.** A model reply that is not a usable action at all
+  (wrong shape). Counted separately from illegal actions.
+- **Ignored affordance.** The model attempts an action the document
+  marked `enabled: false`. Task t10 is the running example.
+- **Step.** One observe, decide, act cycle. Runs are capped at 20 steps.
+- **Execution-based grader.** A deterministic check over backend order
+  records. Never another model.
+- **Cost-reliability frontier.** Token cost plotted against success. A
+  condition is *dominated* if another condition is no more expensive and
+  at least as reliable.
+- **Refusal task.** A task whose correct outcome is to decline (for
+  example, the requested size is sold out). Reported separately, because
+  doing nothing can pass one.
 
 ## 3. Related work
 
-Most prior work asks which *agent* is better at using a computer, and
-treats the interface as a property of the benchmark. We invert that: the
-model is fixed and the interface is the independent variable.
+Most prior work asks which *agent* is better at operating a computer and
+treats the interface as a fixed property of the benchmark. This study
+inverts that. The model is held fixed and the interface is the variable.
 
-**Reusing the human page.** DOM and accessibility agents (Mind2Web,
-WebArena) are accessibility tree (C2). Screenshot and pixel systems (Claude
-computer use, UI-TARS, SeeClick) are screenshot (C1). Grounding is hard,
-and screenshots often cost on the order of 1k to 2k tokens each. Our
-question is not how to ground pixels better. It is whether a non-pixel,
-agent-authored surface is better for ordinary general models. Specialized
-pixel-native models are left for a later check.
+**Reusing the human page.** DOM and accessibility-tree agents (Mind2Web,
+WebArena) correspond to our accessibility tree (C2). Screenshot and pixel
+systems (Claude computer use, UI-TARS, SeeClick) correspond to our
+screenshot (C1). In those lines of work, grounding is the central
+difficulty, and screenshots cost on the order of one to two thousand
+tokens each. Our question is not how to ground pixels better. It is
+whether a non-pixel surface, authored for the agent, is better for
+ordinary general models. Specialized pixel-native models are deferred to
+a later check.
 
-**Compressing the human tree.** UIFormer and Prune4Web prune the human DOM
-or accessibility tree. UIFormer reports that UI text is 80 to 99 percent
-of agent token cost, with about 49 to 56 percent reduction. That line
-improves accessibility tree (C2). View document (C4) is authored from
-backend state, not derived from the human page, and we measure it as a
-controlled arm, not as a plug-in optimizer.
+**Compressing the human tree.** UIFormer and Prune4Web prune and
+restructure the human DOM or accessibility tree to save tokens. UIFormer
+reports interface text at 80 to 99 percent of agent token cost and
+reductions around 49 to 56 percent. This is the closest neighboring line,
+and it improves the accessibility tree (C2). The view document (C4)
+differs in origin: it is generated from backend state, not distilled from
+the human page, and we measure it as a controlled experimental arm rather
+than as a plug-in optimizer.
 
-**Agent-facing protocols.** A2UI is the opposite direction: an agent draws
-UI for a person. MCP is a capability catalog, close to flat tools (C3).
-View document (C4) is application to agent, per view, and
-constraint-carrying. We use it as a measurement probe, not as a proposed
-standard.
+**Agent-facing protocols.** A2UI runs in the opposite direction, letting
+an agent generate interface for a human to view. The Model Context
+Protocol standardizes tool catalogs, which is close to flat tools (C3).
+The view document (C4) is application-to-agent, per view, and carries
+validity constraints, and we match it in grain to flat tools (C3) so the
+document's added value can be isolated. We use it as a measurement probe,
+not as a proposed standard.
 
 **Benchmarks.** WebArena, VisualWebArena, Mind2Web, WebShop, AndroidWorld,
-and MiniWoB++ vary the agent, fix the interface, and grade by execution. We
-reuse execution grading. We do not reuse the goal. We also report a
-model-free observation-cost baseline, which those benchmarks do not.
+and MiniWoB++ vary the agent, fix the interface, and grade by execution.
+We reuse the execution-grading idea and invert the design. We also report
+a model-free observation-cost baseline, which capability benchmarks do
+not provide.
 
-**Table R1.** How this study differs (verified sources only).
+**Table R1.** Positioning against each strand (verified sources only).
 
 | Strand | Representative work | What it does | How this study differs |
 | --- | --- | --- | --- |
-| DOM / accessibility agents | Mind2Web; WebArena | Operate the human page from HTML or a tree | That is accessibility tree (C2), one of four conditions |
-| Screenshot / pixel computer-use | Claude computer use; UI-TARS; SeeClick | See pixels, emit coordinates | That is screenshot (C1). Representation, not better grounding |
-| Optimizing the human tree | UIFormer; Prune4Web | Compress a human-derived tree | Closest neighbor. View document (C4) is authored from backend state |
-| Agent-UI protocols | A2UI; MCP | A2UI is agent to human. MCP is a tool catalog | View document (C4) is application to agent, matched to flat tools (C3) |
+| DOM / accessibility agents | Mind2Web; WebArena | Operate the human page from HTML or a tree | That channel is our accessibility tree (C2), one of four controlled conditions |
+| Screenshot / pixel computer use | Claude computer use; UI-TARS; SeeClick | Perceive pixels, emit coordinates | That channel is our screenshot (C1). We study representation, not better grounding |
+| Optimizing the human tree | UIFormer; Prune4Web | Compress a human-derived tree | Closest neighbor. The view document (C4) is generated from backend state instead |
+| Agent-UI protocols | A2UI; MCP | A2UI is agent to human; MCP is a tool catalog | The view document (C4) is application to agent and matched in grain to flat tools (C3) |
 | GUI / web benchmarks | WebArena; VisualWebArena; Mind2Web; WebShop; AndroidWorld; MiniWoB++ | Vary the agent, fix the interface | We fix the agent and vary the interface |
 
-**What this is not.** "Representation matters" is already known (Mind2Web
-filters the DOM; SeeClick is motivated by lengthy HTML; UIFormer measures
-UI token share). Execution grading is not new. Token-efficient UI trees
-are not new. Agent-facing surfaces are already discussed (A2UI, MCP).
-Constrained action masking is treated as a known idea; we do not attach
-an unchecked citation. The claim here is the controlled A/B/C/D, not
-those facts. Scope (one shop, ten tasks, one model, a hand-authored view
-document (C4)) further bounds novelty.
+**What this study does not claim.** That representation matters is already
+known: Mind2Web filters the DOM because it is too large, SeeClick is
+motivated by lengthy HTML, and UIFormer measures how much of an agent's
+budget the interface consumes. Execution grading is not new. Token-efficient
+interface trees are not new. Agent-facing surfaces are already discussed
+(A2UI, MCP). Masking invalid actions is a known idea in reinforcement
+learning and tool use, and we do not attach a citation we have not
+verified. The claim here is the controlled four-way comparison on a fixed
+application, model, and grader, and the scope of that claim is bounded by
+the setup: one store, ten tasks, one model, and a hand-authored view
+document (C4).
 
 ## 4. Study design
 
-**The shop.** MiniShop is a small catalogue with product pages, a cart, and
-checkout. Backend state is the single source of truth for grading. The
-human HTML includes promo copy, search, decorative filters, and help links,
-so screenshot (C1) and accessibility tree (C2) see a page built for people,
-not a stripped agent shell. Sold-out sizes are visible but disabled on that
-page, so a screenshot or tree agent can still try them. Structured
-conditions act through a JSON API. Screenshot (C1) and accessibility tree
-(C2) drive the human pages in a browser and do not use that JSON API to
-act.
+**The store.** MiniShop is a small shop with a catalog, product pages, a
+cart, and a checkout. Its backend state is the single source of truth for
+grading. The human pages carry realistic clutter (promotional copy, a
+search box, decorative filters, help links), so the screenshot (C1) and
+accessibility tree (C2) conditions see a page genuinely built for people
+rather than a stripped-down agent shell. Sold-out sizes are visible but
+disabled on the page, so a pixel or tree agent can still attempt them. The
+structured conditions act through a JSON API. The screenshot (C1) and
+accessibility tree (C2) conditions drive the human pages in a real
+browser and never touch that API to act.
 
-**Why only the interface changes.** If we also changed the shop, the tasks,
-the grader, or the model, we could not blame the interface. We hold those
-fixed and vary only how the agent sees and acts.
+**Why only the interface varies.** If the store, the tasks, the grader,
+or the model changed at the same time as the interface, no difference
+could be attributed to the interface. So everything else is pinned.
 
 **Table I1.** Held fixed versus varied.
 
 | Held fixed | Varied |
 | --- | --- |
 | MiniShop, one backend, one grader | How the agent *sees* the store |
-| Ten frozen tasks | How the agent *acts* |
-| One model per comparison; temperature 0; step cap 20 | Presence of view document (C4) versus flat tools (C3) |
-| History: task, prior actions, current observation | |
+| Ten frozen tasks | How the agent *acts* on it |
+| One model per comparison; temperature 0; step cap 20 | Presence of the view document, comparing view document (C4) against flat tools (C3) |
+| Memory: task, prior actions, current observation | |
 
-Screenshot (C1) and accessibility tree (C2) cannot share the same action
-vocabulary as the structured conditions (coordinates and named elements
-versus function calls). That is a real confound when comparing human
-surfaces to structured ones, and we state it as such. The comparison that
-isolates the *document* is flat tools (C3) versus view document (C4).
+One honest confound remains. The screenshot (C1) and accessibility tree
+(C2) act through coordinates and named elements, which cannot be identical
+to the structured conditions' function calls. Comparisons between human
+and structured surfaces therefore carry an action-vocabulary difference
+along with the representation difference. The comparison that isolates
+the *document* itself is flat tools (C3) against view document (C4).
 
 **Matched action grain.** Both structured conditions expose the same seven
 operations: `open_product`, `set_size`, `add_to_cart`, `go_catalog`,
-`go_checkout`, `set_address`, `pay`. Flat tools (C3) omits the view
-document. View document (C4) adds current-view identity, `enabled` flags,
-and argument schemas. If view document (C4) had fewer or easier actions, a win could be
-"fewer buttons." Matched grain blocks that. What it does not yet separate
-is compactness versus constraint-carrying. Those stay confounded until the
-ablation in Section 6.5. Models are never mixed across conditions in one
+`go_checkout`, `set_address`, and `pay`. Flat tools (C3) stops there. The
+view document (C4) adds the current view, per-action `enabled` flags, and
+argument schemas. If the view document (C4) had fewer or simpler actions,
+any win could be explained as "fewer buttons." Matched grain removes that
+explanation. What matched grain does not separate is *why* the document
+helps when it helps: because it is compact, or because it carries
+constraints. Those two mechanisms stay entangled until the ablation
+described in Section 6.5 is run. Models are never mixed within a
 comparison.
 
 **The four conditions.**
 
 | Condition | What the agent sees | How it acts |
 | --- | --- | --- |
-| screenshot (C1) | Rendered image of the human page | Click coordinates, type, scroll |
-| accessibility tree (C2) | Text tree of that page | Click or fill named elements |
-| flat tools (C3) | Function catalog; no current view | Call those functions |
-| view document (C4) | JSON: view, state, entities, affordances | Invoke an enabled affordance with typed arguments |
+| Screenshot (C1) | Rendered image of the human page | Click coordinates, type, scroll |
+| Accessibility tree (C2) | Text tree of that page | Click or fill named elements |
+| Flat tools (C3) | Function catalog, no current view | Call those functions |
+| View document (C4) | JSON: view, state, entities, affordances | Invoke an enabled affordance with typed arguments |
 
-**Tasks and grader.** Ten frozen tasks (seven expected to succeed, three
-expected to be refused). The grader checks the backend order record. It is
-never another model. Success tasks require a matching product, size, and
-shipping address. Refusal tasks require that a forbidden order is *not*
-placed: t03 (Harbor Blue Tee size M, sold out), t05 (pay on an empty cart),
-t07 (Signal Cap size S, sold out). A do-nothing agent can pass a refusal by
-inaction, so refusals are reported separately and must not inflate the
+**Tasks and grading.** Ten frozen tasks: seven purchases that should
+succeed and three requests that should be refused. The grader inspects
+the backend order record and is never another model. A purchase counts
+only if the product, size, and shipping address all match. A refusal
+counts only if the forbidden order was never placed: t03 asks for a
+sold-out size, t05 asks to pay with an empty cart, t07 asks for another
+sold-out size. Because an agent that does nothing can technically pass a
+refusal, refusal results are reported separately and never inflate the
 headline success rate.
 
-**Table T1.** Frozen MiniShop tasks.
+**Table T1.** The frozen task set.
 
 | ID | Expect | Instruction (abridged) |
 | --- | --- | --- |
@@ -274,29 +308,31 @@ headline success rate.
 | t09 | success | Day Bottle and Crew Socks, to 18 Cedar Ave, Portland |
 | t10 | success | Navy Crew Tee, size L, to 77 Oak Lane, Denver |
 
-**How a run works.** One run is one (condition, task, repeat). The agent
-loops: observe, emit one action, apply it, observe again, until success or
-the step cap. A full sweep is 4 conditions × 10 tasks × 5 repeats (200
-runs). A deterministic oracle that replays the correct policy is run first
-on flat tools (C3) and view document (C4). It reaches 100% on both, so a
-later model miss is the model, not the harness. Each run is a JSONL trace
-with per-step usage and a final rollup. Conditions are launched separately
-so a crash in one cannot abort the others.
+**How a run works.** One run is one combination of condition, task, and
+repeat. The agent loops (observe, act, observe) until the task completes
+or the twenty-step cap is hit. A full sweep is 4 conditions by 10 tasks
+by 5 repeats, 200 runs. Before any model runs, a deterministic oracle
+that replays the known-correct policy is executed on flat tools (C3) and
+view document (C4). It scores 100 percent on both, which establishes that
+any later miss belongs to the model, not to the harness or the grader.
+Every run writes an independent trace with per-step usage, so the
+analysis reads finished artifacts rather than live state, and conditions
+are launched separately so one crash cannot take down the others.
 
-### 4.1 An example of view document (C4)
+### 4.1 A real view document (C4)
 
-The document always has four keys. `view` is which screen the agent is on.
-`state` is the session fields the view depends on. `entities` are the
-objects shown. `affordances` are the actions, each with `enabled` and an
-`input` schema.
+The document always has four parts. `view` names the screen the agent is
+on. `state` holds the session fields that matter on that screen.
+`entities` are the objects shown. `affordances` are the actions, each
+with an `enabled` flag and an `input` schema for its arguments.
 
-The listing below is a real document from MiniShop, not a sketch. The
-agent has opened Navy Crew Tee, chosen size L, and added it to the cart.
-It is still on the product page. It has not gone to checkout. Setting a
-shipping address is therefore illegal. The document says so:
-`set_address` and `pay` are `enabled: false`. `go_checkout` is enabled.
-The product-id enum is shortened in print; the live document lists every
-catalog id.
+The listing below is an actual document from MiniShop, not a sketch. The
+agent has opened the Navy Crew Tee, selected size L, and added it to the
+cart. It is still on the product page. Checkout has not been reached, so
+entering a shipping address is not yet a legal move, and the document
+says so: `set_address` and `pay` carry `enabled: false`, while
+`go_checkout` is available. The product-id list is shortened here for
+print; the live document lists every catalog id.
 
 ```json
 {
@@ -340,153 +376,174 @@ catalog id.
 }
 ```
 
-This is the t10 failure, in one object. The valid next step is
-`go_checkout`. The model instead called `set_address` while `enabled` was
-false. The backend returned HTTP 400. Surface and backend agree; a
-regression test pins that agreement. The miss is the model, not a lying
-document.
+Hold on to this example, because it is exactly the state where the one
+failure of the view document (C4) happens. The correct next move is
+`go_checkout`. In the model run, the model instead called `set_address`
+from this state, with `enabled: false` printed in front of it, and the
+backend rejected the call. The document told the truth and the model did
+not read it. Section 6.3 quantifies that failure.
 
-The document is a hand-written function of backend state, so it is an
-*upper bound* on how good an agent surface can be: it is faithful by
-construction. Enable rules match the human UI: `add_to_cart` only when a
-valid size is selected on a product view; `set_address` only on checkout;
-`pay` only on checkout with a non-empty cart and address; `set_size` enum
-exactly the in-stock sizes. Tests forbid the document from advertising an
-action the backend would reject.
+Two properties make the document trustworthy as a measurement instrument.
+First, it is generated from backend state, so it is faithful by
+construction, and the enable rules mirror the ones the human page already
+uses: `add_to_cart` only when a valid size is selected, `set_address`
+only at checkout, `pay` only at checkout with a non-empty cart and
+address, and the size list always equal to what is actually in stock.
+Second, an automated consistency check forbids the document from ever
+advertising an action the backend would reject, so a good result for the
+view document (C4) cannot be an artifact of a surface that quietly
+disagrees with the application. Because it is written by hand against a
+known backend, it should be read as an upper bound on how good such a
+surface can be.
 
 ## 5. What we measure
 
-**Per run.** Success (binary; for refusals, correctly declining). Input and
-output tokens summed over steps. Step count. Illegal actions. Malformed
-actions, counted separately so formatting failures are not absorbed into
-the illegal rate.
+**Per run.** Success (for refusal tasks, correctly declining). Input and
+output tokens summed over steps. Step count. Illegal actions (backend
+rejections). Malformed actions (replies that are not a usable action at
+all), counted separately so that formatting failures are never disguised
+as validity failures.
 
-**Why tokens split this way.** Total input is roughly (fixed overhead per
-step) plus (current observation). A representation can win by being lighter
-per look, or by needing fewer looks.
+**How tokens decompose.** Each step costs a roughly constant overhead
+(instructions, task, prior actions) plus the current observation, whose
+size depends on the condition. A representation can therefore win in two
+ways: by being lighter per look, or by needing fewer looks.
 
-*Text conditions (accessibility tree (C2), flat tools (C3), view
-document (C4)).* Cost is the length of the serialized observation under a
-fixed tokenizer (`o200k_base` for the deterministic baseline). Flat tools
-(C3) also re-sends the full tool schema on every call. View document (C4)
-pays for the document. Accessibility tree (C2) pays for the human tree.
+*Text conditions.* For the accessibility tree (C2), flat tools (C3), and
+view document (C4), the observation is serialized text, and its cost is
+simply the length of that text under a fixed tokenizer. Two structural
+facts matter. Flat tools (C3) re-sends its full function schema with
+every call, which dominates its per-step cost. The view document (C4)
+pays for the document itself. Median per-step input along the shortest
+correct path:
 
-Median per-step input along the canonical path:
-
-| Condition | system | task+prior | tool schema | observation | per-step total |
+| Condition | System | Task and prior | Tool schema | Observation | Per-step total |
 | --- | --- | --- | --- | --- | --- |
-| screenshot (C1), estimate | 186 | 62 | n/a | 1105 (image) | 1353 |
-| accessibility tree (C2), measured | 188 | 62 | n/a | ~650 (tree) | ~900 |
-| flat tools (C3) | 159 | 62 | 490 | 25 | 736 |
-| view document (C4) | 188 | 62 | n/a | 422 | 672 |
+| Screenshot (C1), estimate | 186 | 62 | not sent | 1105 (image) | 1353 |
+| Accessibility tree (C2), measured | 188 | 62 | not sent | ~650 (tree) | ~900 |
+| Flat tools (C3) | 159 | 62 | 490 | 25 | 736 |
+| View document (C4) | 188 | 62 | not sent | 422 | 672 |
 
-The flat tools (C3) schema (490 tokens) dwarfs its 25-token status object.
-View document (C4)'s whole extra cost is the document (422). Accessibility
-tree (C2) is measured from live browser traces. The other three are
-reconstructed with no model call.
+The flat tools (C3) schema (490 tokens) dwarfs its tiny status object
+(25 tokens). The view document (C4) spends its budget on the document
+itself (422 tokens). The accessibility tree (C2) is measured from live
+browser traces because it requires a rendered page. The other three rows
+are reconstructed deterministically with no model call.
 
-*screenshot (C1), tiling, not tokenization.* A screenshot is billed by
-resolution tiles, not by how busy the page looks. A blank page and a busy
-page at the same viewport cost the same. On a 1280×800 viewport the
-gpt-4o-style high-detail estimate is about 1105 image tokens (6 tiles).
-Providers differ: OpenAI itemizes image tokens; Vertex/Gemini fold them
-into `prompt_tokens`. That is why our `gemini-2.5-flash` screenshot (C1)
-runs show `image_tokens = 0` and about 46k input tokens per task. The
-image is billed. It is just not itemized. We therefore read screenshot
-(C1) cost from total input tokens. Tiling constants are
-provider-specific; the gpt-4o numbers are a labeled estimate, not a
-universal formula.
+*The screenshot (C1) is priced differently.* Images are billed by
+resolution tiles, not by tokenized content. Under the widely documented
+gpt-4o-style rule (fit within a 2048 by 2048 box, scale the short side
+toward 768 pixels, cover with 512-pixel tiles, charge a base plus a
+per-tile rate), our 1280 by 800 viewport costs six tiles, about 1105
+image tokens, and a busier page at the same size costs no more. Providers
+also report image cost differently. OpenAI itemizes image tokens.
+Vertex and Gemini fold them into the total prompt count, which is why our
+screenshot (C1) runs report an itemized image count of zero alongside
+roughly 46,000 input tokens per task. The image is billed either way, so
+we read the screenshot (C1) cost from total input tokens. Tiling
+constants vary by provider, and we present these numbers as a labeled
+estimate rather than a universal formula.
 
-**Analysis.** We report a per-(model, condition) table and a
-cost-reliability frontier (median input tokens versus success). Because
-the same tasks run under every condition, we also report paired per-task
-differences between view document (C4) and flat tools (C3), with
-bootstrap 95% confidence intervals resampled over tasks, success and
-refusal separately. We never pool models.
+**Analysis.** We report one table per model and condition, and a
+cost-reliability frontier of median input tokens against success rate.
+Because every condition runs the same tasks, we also compare the view
+document (C4) against flat tools (C3) *paired per task*: average each
+task over its repeats, take the difference, and bootstrap a 95 percent
+confidence interval over tasks, with success and refusal tasks reported
+separately. Models are never pooled.
 
-**Latency** is planned and not yet instrumented. Time-to-completion
-weights round trips differently from tokens, so it could move the
-structured comparison without changing Table 1's token ranks.
+**Latency** is not yet instrumented. Time weights round trips differently
+from tokens, so a timed re-run could shift the structured comparison
+without changing any token number. It is listed as future work.
 
 ## 6. Results
 
-One model, one shop, ten tasks. Read coarse orderings as the robust part.
-Treat the fine gap between flat tools (C3) and view document (C4) as
-provisional.
+All results in this section come from one model on one store. The robust
+reading is the coarse ordering (human surfaces against structured ones).
+The fine margin between flat tools (C3) and view document (C4) is a
+provisional, single-model result.
 
-### 6.1 Model-free observation cost
+### 6.1 What each representation costs before any model touches it
 
-Before any model runs, we replay each task's canonical path and count
-observation tokens. Median per-step observation cost is about 1105 for
-screenshot (C1), 512 for flat tools (C3) (schema re-sent each step), and
-453 for view document (C4). Text is about 2.4 times cheaper per look than a
-screenshot. This is the observation term only, on the shortest path. It
-does not include step-count effects.
+Replaying each task's shortest correct path and counting observation
+tokens with a fixed tokenizer gives a model-free baseline. One look costs
+a median of roughly 1105 tokens on the screenshot (C1), 512 on flat tools
+(C3) (the re-sent schema), and 453 on the view document (C4). Text is
+about 2.4 times cheaper per look than pixels, and the view document (C4)
+is slightly cheaper per look than flat tools (C3). This measures the
+observation term only. Real runs add step-count effects, and Section 6.3
+shows they reverse the ordering of flat tools (C3) and view document (C4).
 
-### 6.2 Oracle control
+### 6.2 The apparatus, checked without a model
 
-A deterministic agent that follows the correct policy reaches 100% on
-flat tools (C3) and view document (C4). Oracle tokens are locally
-tokenized, not provider-billed, and the flat tools (C3) tool schema is omitted from that
-count because the oracle loop sends schemas out of band. Screenshot (C1)
-and accessibility tree (C2) are out of scope for the oracle (they would
-need pixel or element oracles).
+A deterministic oracle that replays the known-correct policy scores 100
+percent on flat tools (C3) and view document (C4). Its token counts are
+locally tokenized rather than provider-billed, and the flat tools (C3)
+schema is not included in that count because the oracle loop delivers
+schemas out of band. The screenshot (C1) and accessibility tree (C2) are
+out of the oracle's scope, since they would need pixel-level or
+element-level oracles. The point of the control is attribution: when a
+model later misses, the miss belongs to the model.
 
-### 6.3 First model run: `gemini-2.5-flash` (N = 5)
+### 6.3 The model run: `gemini-2.5-flash`, five repeats
 
-One general model, temperature 0, step cap 20, all four conditions, all
-ten tasks, five repeats (200 runs). Table 1 is the aggregate. Human pages
-for screenshot (C1) and accessibility tree (C2) are the catalogue, a
-sold-out product, checkout, and confirmation. Interval estimates are
-percentile bootstrap 95% CIs over the 50 task-repeat units per cell.
+One general model, temperature zero, step cap twenty, four conditions,
+ten tasks, five repeats: 200 runs. Confidence intervals are percentile
+bootstraps over the fifty task-repeat units in each cell.
 
-**Table 1.** Per-condition results, `gemini-2.5-flash`, N=5.
+**Table 1.** Per-condition results.
 
 | Condition | Success (95% CI) | Median input tokens (95% CI) | Median steps | Illegal/step | Malformed/step |
 | --- | --- | --- | --- | --- | --- |
-| screenshot (C1) | 30% [18, 42] | ~46,338 [46,324, 46,368] | 20 | 0.000 | 0.000 |
-| accessibility tree (C2) | 72% [60, 84] | ~6,770 [5,835, 9,714] | 7 | 0.198 | 0.116 |
-| flat tools (C3) | 100% [100, 100] | ~3,134 [3,118, 3,154] | 7 | 0.000 | 0.000 |
-| view document (C4) | 92% [84, 98] | ~4,455 [4,413, 4,491] | 6 | 0.016 | 0.000 |
+| Screenshot (C1) | 30% [18, 42] | ~46,338 [46,324, 46,368] | 20 | 0.000 | 0.000 |
+| Accessibility tree (C2) | 72% [60, 84] | ~6,770 [5,835, 9,714] | 7 | 0.198 | 0.116 |
+| Flat tools (C3) | 100% [100, 100] | ~3,134 [3,118, 3,154] | 7 | 0.000 | 0.000 |
+| View document (C4) | 92% [84, 98] | ~4,455 [4,413, 4,491] | 6 | 0.016 | 0.000 |
 
-Across 200 runs the traces sum to about 2.82M input tokens and 35k
-output tokens, about $0.93 at the recorded Flash rates ($0.30 per 1M
-input, $2.50 per 1M output). By condition: screenshot (C1) 2.11M in /
-19.9k out; accessibility tree (C2) 385k / 9.4k; flat tools (C3) 138k /
-1.7k; view document (C4) 193k / 4.1k. Screenshot (C1) is about 73% of the
-bill.
+The whole sweep cost about 2.82 million input tokens and 35 thousand
+output tokens, about $0.93 at the recorded rates ($0.30 per million
+input tokens, $2.50 per million output tokens). The screenshot (C1) alone is
+about 73 percent of that bill (2.11 million input; the accessibility tree
+(C2) used 385 thousand, flat tools (C3) 138 thousand, view document (C4)
+193 thousand). Screenshots dominate the cost before the question of
+whether they succeed is even asked.
 
-**Success.** Screenshot (C1) passes 30% [18, 42] and *none* of the seven
-success tasks (its passes are refusals). Accessibility tree (C2) reaches
-72% [60, 84] but mixes backend rejections and malformed JSON. Flat tools
-(C3) is 100%. View document (C4) is 92% [84, 98], with the entire gap on
-t10. Intervals are wide. The structured success gap is one task.
+**Success.** The screenshot (C1) passes 30 percent of runs and *none* of
+the seven purchase tasks; its passes are all refusals. The accessibility
+tree (C2) reaches 72 percent but earns it noisily, mixing backend
+rejections with malformed replies. Flat tools (C3) is perfect. The view
+document (C4) is near-perfect at 92 percent, and its entire deficit is
+one task, t10. With five repeats over ten tasks these intervals are wide,
+and the structured gap rests on that single task.
 
-**Tokens.** Screenshot (C1) costs about 10 times view document (C4) and
-about 15 times flat tools (C3). Vertex folds image tokens into
-`prompt_tokens`, so that cost is in total input. Among text conditions,
-flat tools (C3) is cheapest, view document (C4) next, accessibility tree
-(C2) most expensive and most variable. The model-run order (flat tools (C3)
-cheaper than view document (C4)) *reverses* the minimal-path baseline in
-Section 6.1: once real step counts are in play, the view document (C4)
-grows as the cart fills.
+**Tokens.** The screenshot (C1) costs about ten times the view document
+(C4) and about fifteen times flat tools (C3) per task. Among the text
+conditions, flat tools (C3) is cheapest, the view document (C4) is next,
+and the accessibility tree (C2) is the most expensive and the most
+variable, because tree size tracks page content. Note the reversal
+against Section 6.1: per look, the view document (C4) is cheaper than
+flat tools (C3), but in real runs the document grows as the cart fills,
+and flat tools (C3)'s tiny status objects win on total cost.
 
-**Steps.** View document (C4) uses the fewest median steps (6). Flat tools
-(C3) uses 7. Screenshot (C1) sits at the cap (20) because it never
-completes a success task. Accessibility tree (C2) has median 7 and a
-long tail (it hits the cap on the two-item task t09).
+**Steps.** The view document (C4) finishes fastest, median six steps,
+against seven for flat tools (C3) and the accessibility tree (C2). The
+screenshot (C1) sits at the cap of twenty because it never completes a
+purchase and simply spends its budget.
 
-**Illegal and malformed.** Screenshot (C1) and flat tools (C3) are clean
-on both (0.000). View document (C4) has 0.016 illegal/step, all on t10.
-Accessibility tree (C2) is the outlier (0.198 illegal/step, 0.116
-malformed/step). Screenshot (C1)'s illegal rate of 0.000 is not virtue: a
-coordinate click rarely trips the backend flag. Its failure is in success,
-steps, and tokens.
+**Errors.** The screenshot (C1) and flat tools (C3) commit zero illegal
+and zero malformed actions. The view document (C4) commits 0.016 illegal
+actions per step, all on t10. The accessibility tree (C2) is the outlier,
+0.198 illegal and 0.116 malformed per step: the human tree invites named
+clicks the backend rejects, and the model periodically produces replies
+the loop cannot parse at all. One caution: the screenshot (C1)'s clean
+error rate is not a virtue. A coordinate click rarely trips the backend's
+validity check, so its failures show up as capped steps and spent tokens
+instead.
 
-**Table 2.** Per-task readout, `gemini-2.5-flash`, N=5. Cell = success
-rate · median steps · median input tokens. Refusal tasks marked *r*.
+**Table 2.** Per-task readout. Each cell is success rate, median steps,
+and median input tokens over five repeats. Refusal tasks are marked *r*.
 
-| Task | | screenshot (C1) | accessibility tree (C2) | flat tools (C3) | view document (C4) |
+| Task | | Screenshot (C1) | Accessibility tree (C2) | Flat tools (C3) | View document (C4) |
 | --- | --- | --- | --- | --- | --- |
 | t01 | | 0% · 20 · 46,368 | 20% · 12 · 11,702 | 100% · 7 · 3,154 | 100% · 6 · 4,498 |
 | t02 | | 0% · 20 · 46,368 | 100% · 11 · 10,809 | 100% · 7 · 3,154 | 100% · 6 · 4,486 |
@@ -499,21 +556,23 @@ rate · median steps · median input tokens. Refusal tasks marked *r*.
 | t09 | | 0% · 20 · 46,428 | 0% · 20 · 21,658 | 100% · 12 · 5,833 | 100% · 10 · 7,867 |
 | t10 | | 0% · 20 · 46,368 | 100% · 7 · 6,770 | 100% · 7 · 3,154 | 20% · 6 · 4,544 |
 
-Screenshot (C1) hits the step cap on every task it does not refuse, and
-fails all seven success tasks. Its cost is nearly flat (~46k) because
-image cost is set by viewport. Accessibility tree (C2) fails t01, t04, and
-t09 (t09 step-capped at ~21.7k tokens). Flat tools (C3) is clean on every
-task. View document (C4) misses only t10 (20%); elsewhere it matches flat
-tools (C3) on success, uses one fewer step, and costs more tokens.
+The table makes four patterns visible. The screenshot (C1) hits the step
+cap on every task it does not refuse, at a nearly flat 46 thousand tokens,
+because image cost is set by the viewport. The accessibility tree (C2) is
+erratic, failing t01 and t04 outright and capping out on the two-item
+task t09 with the heaviest text-condition token bill (about 21.7
+thousand). Flat tools (C3) is uniformly clean. The view document (C4)
+matches it everywhere except t10, usually one step faster and always at
+more token cost.
 
-**Paired view document (C4) versus flat tools (C3).** Average each task over
-five repeats, take view document (C4) minus flat tools (C3), bootstrap a
-95% CI over tasks.
+**The paired comparison.** Averaging each task over its five repeats and
+taking the difference (view document (C4) minus flat tools (C3)) gives a
+per-task comparison with a bootstrap interval over tasks.
 
-**Table 3.** Paired differences, `gemini-2.5-flash`. Positive means view
+**Table 3.** Paired per-task differences. Positive means the view
 document (C4) is higher.
 
-| Task set | n | Metric | Mean diff (C4 minus C3) | 95% CI | Excludes 0? |
+| Task set | n | Metric | Mean difference | 95% CI | Excludes 0? |
 | --- | --- | --- | --- | --- | --- |
 | success | 7 | success | −0.114 | [−0.343, 0.000] | no |
 | success | 7 | input tokens | +1,404 | [+1,317, +1,549] | yes |
@@ -522,206 +581,237 @@ document (C4) is higher.
 | refusal | 3 | input tokens | +386 | [−174, +815] | no |
 | refusal | 3 | steps | −0.33 | [−1.00, 0.00] | no |
 
-On success tasks, view document (C4) **saves steps** (CI excludes zero)
-and **costs more tokens** (CI excludes zero; all seven tasks positive). It
-does **not** significantly change success (CI includes zero; the whole
-point estimate is t10). Flat tools (C3) is therefore Pareto-preferred
-here: cheaper and at least as reliable. H2's claim that view document (C4)
-dominates is not supported on this cell. On refusals, nothing separates
-them.
+On purchase tasks, the view document (C4) saves steps (the interval
+excludes zero, which is precisely what a current-view document is for)
+and costs more tokens (the interval excludes zero, and all seven tasks
+point the same way). It does not measurably change success (the interval
+includes zero, and the entire point estimate is t10). So on this store
+and this model, flat tools (C3) is preferred on the frontier: cheaper,
+and at least as reliable. The strong form of H2, that the view document
+(C4) dominates, is not supported here. On refusal tasks nothing separates
+the two.
 
-**Task t10, plainly.** Buy a Navy Crew Tee in size L, ship to 77 Oak Lane,
-Denver. Valid order: open product, add to cart, go to checkout, *then*
-set the address. The model called `set_address` while still on the product
-view. Section 4.1 is that state. The document had `enabled: false`. The
-backend rejected it. Reproduced on 4 of 5 main-sweep repeats and 5 of 5
-on a t10-only re-run, same illegal step. A truthful document does not help a
-model that does not read `enabled`. That ignored-affordance rate is what
-a second model must measure.
+**The one failure, told plainly.** Task t10 asks the agent to buy a Navy
+Crew Tee in size L and ship it to 77 Oak Lane, Denver. The legal order of
+operations is: open the product, add it to the cart, go to checkout, and
+only then set the address. The model instead tried to set the address
+while still on the product page. That is exactly the state printed in
+Section 4.1, where `set_address` is marked `enabled: false`. The backend
+rejected the call, the run burned the steps, and the task failed. The
+document was correct, the backend agreed with it, and an automated check
+pins that agreement, so this is not an interface bug. It is a model
+ignoring a rule the interface stated. The failure reproduced on four of
+five sweep repeats and five of five in a follow-up diagnostic, always as
+the same premature call. The lesson generalizes: a truthful document
+cannot help a model that does not read `enabled`. How often a model
+attempts actions the interface marked unavailable (its ignored-affordance
+rate) is a quantity the next model must measure.
 
-### 6.4 Second model (RQ3), not yet run
+### 6.4 A second model (not yet run)
 
-Whether "flat tools (C3) is Pareto-preferred" generalizes is open. A
-second general model would test, in particular, whether other models obey
-`enabled: false` on t10.
+Whether flat tools (C3) stays preferred is an open question about models,
+not about the store. The single most informative datum from a second
+general model is whether it respects `enabled: false` on t10.
 
-### 6.5 Constraint-pruning ablation, not yet run
+### 6.5 An ablation (not yet run)
 
-To separate compactness from constraint-carrying, strip `enabled` flags
-and argument enums from view document (C4), keep view and entities, and
-measure whether the step saving survives.
+Stripping the `enabled` flags and argument constraints out of the view
+document (C4), while keeping the view and entities, would separate the
+document's two entangled mechanisms: compactness and constraint-carrying.
+If the step savings vanish, the constraints were doing the work.
 
 ## 7. Discussion
 
-### 7.1 What this cell shows
+### 7.1 What this cell establishes
 
-The cell is `gemini-2.5-flash` × MiniShop, N=5, ten tasks.
+- **Representation moves every measured quantity (RQ1).** Success from 30
+  to 100 percent, median tokens by a factor of about fifteen, steps from
+  six to the cap, and error rates from zero to 0.198 illegal per step,
+  all from re-describing the same store to the same model.
+- **Human surfaces are dominated here (RQ2, first half).** Both the
+  screenshot (C1) and the accessibility tree (C2) are more expensive and
+  less reliable than either structured condition.
+- **The document does not yet beat the catalog (RQ2, second half).** Flat
+  tools (C3) is preferred over the view document (C4) on tokens and
+  success, while the view document (C4) reliably saves steps. The
+  mechanism a purpose-built surface promises is visible, and it is not
+  yet large enough to pay its token bill on this store.
+- **The one failure is behavioral, not structural.** On t10 the document
+  told the truth and the model ignored it. That distinction only exists
+  because the surface is checked against the backend, which is an
+  argument for building agent surfaces that can be checked.
 
-- **RQ1, coarse.** Representation moves success, tokens, steps, and error
-  rates. Screenshot (C1) is about 10 times view document (C4) and about 15
-  times flat tools (C3) in median input tokens, succeeds 30%, and hits the
-  step cap on every success task. Accessibility tree (C2) is 72% with the
-  highest error rates. Both structured conditions clear the human surface.
-- **RQ2, human surfaces.** Screenshot (C1) and accessibility tree (C2)
-  are dominated here. That part of H2 holds.
-- **RQ2, structured pair.** H2's claim that view document (C4) dominates
-  is *not* supported. Flat tools (C3) is Pareto-preferred on tokens and
-  success. The view document (C4) mechanism (fewer steps, −1.17 per
-  success task) is present and not large enough to offset +1,404 input
-  tokens.
-- **t10 is model behavior.** The document was truthful. The model ignored
-  it.
-
-This is the *least favorable* setting for a purpose-built surface: tiny
-state, short tasks, and a model that ignores flags. Flat tools (C3)'s
-memory burden is light. View document (C4) still pays to send a growing
-document.
+It is worth saying why this store is the hard case for the view document
+(C4). MiniShop is tiny: few views, short tasks, little state to track.
+That is exactly where flat tools (C3)'s weakness, making the model carry
+the state in its head, costs the least. A representation that pays
+per-step to describe state earns the least where there is the least
+state to describe.
 
 ### 7.2 What later cells must show
 
 These are predictions, not results.
 
-1. **Second general model, N=5 (RQ3 / H3).** If another model obeys
-   `enabled: false` on t10, view document (C4) success should rise toward
-   flat tools (C3). If it still misses, the miss is not unique to Flash.
-   Never pool models. If the model lacks vision, drop screenshot (C1) and
-   say so.
-2. **Ablation.** If view document (C4) stays more expensive after flags are
-   stripped, the overhead is document growth. If step savings disappear,
-   the step win was constraint-carrying.
-3. **Latency.** Fewer round trips could flip the verdict without changing
-   token ranks.
-4. **A harder application.** MiniShop is where flat tools (C3)'s tracking
-   tax is smallest. "Flat tools (C3) wins on MiniShop" is not "do not ship
-   view document (C4)."
+1. **A second general model (RQ3).** If it obeys `enabled: false` on t10,
+   the view document (C4) closes the success gap. If it also ignores the
+   flag, the miss is a property of current models rather than of one
+   model. Either answer is informative. Models stay unpooled, and if a
+   model lacks vision, the screenshot (C1) is dropped and reported as
+   such.
+2. **The ablation.** Decides whether the document's value is compactness
+   or constraints.
+3. **Latency.** The view document (C4) uses fewer round trips. Priced in
+   time instead of tokens, the verdict could flip without any number in
+   Table 1 changing.
+4. **A harder application.** More views, more state, more ways to act
+   illegally. That is where the state-tracking tax on flat tools (C3) is
+   hypothesized to grow, and where the trade should tilt. Until that cell
+   exists, "flat tools (C3) wins on MiniShop" must not be read as "do not
+   build agent surfaces."
 
-We treat view document (C4)'s fewer steps as mechanism present, not yet
-decisive on cost.
+## 8. How an application could ship a view document (C4)
 
-## 8. How an application could ship view document (C4)
+The measured document is hand-written, an upper bound. The encouraging
+fact for adoption is that almost everything in it is validity logic the
+application already has. A human page already disables Add to cart until
+a size is chosen, already validates the address field, already hides Pay
+until the cart and address are set. Shipping a view document (C4) is
+mostly *serializing predicates that already exist*, not authoring new
+business rules. The backend remains the authority, and the document must
+never advertise an action the backend would reject, which is a testable
+property.
 
-The measured view document (C4) is hand-authored, an upper bound. Almost all of it is
-validity logic the human UI already has: disable Add to cart until a
-size is chosen, validate the address, hide Pay until cart and address are
-set. Adoption is mostly *serializing existing predicates*, not inventing
-new rules. The backend stays the authority. The document may never
-advertise an action the backend would reject.
+Five ways to produce the document, from highest leverage to most general:
 
-Five paths, from highest leverage to most general:
+1. **Framework-emitted.** The developer declares views, state, and
+   actions once, and the framework renders both the human page and the
+   view document (C4) from that single declaration. Near-zero marginal
+   effort and no drift between the two surfaces, but it requires
+   framework support that is not yet common.
+2. **Projected from a spec.** Applications with a GraphQL schema, form
+   validation schemas, or server-driven UI already hold their capabilities
+   in machine-readable form. Types become entities, mutations become
+   affordances, validation rules become `enabled` logic. Fidelity is high
+   wherever the spec is the real authority.
+3. **Hand-written per view (this study).** Faithful by construction and
+   pinned by tests, but bespoke per view, so it suits a few high-value
+   flows rather than an ecosystem. As a size reference, MiniShop's
+   document generator is roughly three to four times the code of its flat
+   tools (C3) catalog, and it mirrors checks the human page already makes.
+4. **Compiled from the human page.** A compiler reads the DOM, ARIA
+   roles, and disabled attributes and emits a document. It costs the
+   application nothing, but it inherits only what the page happens to
+   render, and it can disagree with the backend, so it must be validated
+   before it is trusted.
+5. **Model-extracted.** A model reads the screen and writes the document.
+   It works on any application with zero cooperation, and it inverts the
+   economics: the cost returns on every step, along with the risk of
+   hallucinated actions. A fallback, not the goal.
 
-1. **Framework-emitted.** One declaration yields the human page and the
-   view document. Low effort at scale, high fidelity, needs framework
-   support that is not yet common.
-2. **Projected from a spec.** GraphQL, form schemas, or server-driven UI
-   already name types, mutations, and validation. Medium effort, fidelity
-   high where the spec is the truth.
-3. **Hand-authored (this study).** Faithful, does not scale. In MiniShop
-   the view document (C4) projection is roughly three to four times the size of the
-   flat tools (C3) definition, and it mirrors checks the human templates
-   already encode.
-4. **Compiled from the human page.** Read DOM, ARIA, and `disabled`. Near
-   zero cost to the app, but lossy, and it can disagree with the backend.
-   Must be validated.
-5. **Model-extracted.** A model reads the screen and emits the document.
-   Universal, and it puts the cost back on every step, with hallucination
-   risk. A fallback, not the point of view document (C4).
+**The underlying trade.** A view document (C4) pays once, at authoring or
+compile time, for the ability to state what is true and allowed at every
+step. Flat tools (C3) pays forever at runtime, because the model must
+re-derive state from its own history on every step, for the life of the
+deployment. On a tiny store that runtime tax is small, which is exactly
+what Section 6 measures. It grows with views, state, and ways to be
+wrong, and it is amortized across every agent that ever visits the
+application.
 
-**Build time versus runtime.** View document (C4) pays once (author,
-framework, or compile) and then states what is allowed. Flat tools (C3)
-pays a perpetual tax: the model re-derives state from history on every
-step. That tax is small on MiniShop. It is expected to grow with more
-views, more state, and more ways to act illegally.
+**A short recipe for a developer today.** Enumerate the views. For each
+view, expose the state fields, the entities, and the actions, reusing
+the exact enable-conditions and validators the human page already has.
+Serve the document alongside the page. Keep backend enforcement in
+place. Add one automated check that the document never advertises what
+the backend would reject.
 
-**A short procedure for a developer today.** List the views. For each
-view, expose state, entities, and actions with the same enable-conditions
-the human UI already uses. Serve the document. Keep backend enforcement.
-Add a consistency check so the two surfaces cannot drift.
+**Table 4.** The five paths at a glance.
 
-**Table 4.** Adoption paths for view document (C4).
-
-| Path | App effort | Coverage | Fidelity | When |
+| Path | Application effort | Coverage | Fidelity | Best fit |
 | --- | --- | --- | --- | --- |
-| Framework-emitted | Low at scale | High | High | New apps; an agent-aware framework |
-| Derived from a spec | Low to medium | Medium to high | High where the spec rules | GraphQL, form schemas, server-driven UI |
-| Hand-authored | Medium per app | Whatever is authored | High | A few high-value flows; this paper's upper bound |
-| Compiled from the human page | Near-zero | Broad | Lossy; must check | Legacy apps |
-| Model-extracted | Near-zero | Universal | Lowest; recurs at runtime | Fallback only |
+| Framework-emitted | Low at scale | High | High, no drift | New applications on agent-aware frameworks |
+| Projected from a spec | Low to medium | Wherever the spec rules | High there | GraphQL, form schemas, server-driven UI |
+| Hand-written per view | Medium per app | What is authored | High, test-pinned | A few high-value flows; this paper |
+| Compiled from the human page | Near zero | Any app with a page | Lossy, must be checked | Legacy applications |
+| Model-extracted | Near zero | Universal | Lowest, cost recurs | Fallback only |
 
-Validating compiled and model-extracted surfaces against this hand-authored
-bound is future work.
+Measuring the two generated paths (compiled and model-extracted) against
+the hand-written upper bound established here is future work.
 
 ## 9. Limitations
 
-**External validity.** One model, one small synthetic shop, ten tasks.
-Paired intervals resample over 7 success tasks and 3 refusal tasks. We
-do not generalize beyond a controlled shopping task.
+**Scope.** One model, one small synthetic store, ten tasks. The paired
+intervals resample over seven purchase tasks and three refusals, so they
+are wide by construction. Nothing here generalizes beyond a controlled
+shopping task yet.
 
-**Construct validity of view document (C4).** Hand-authored, so an upper
-bound. A badly written document would understate view document (C4). We freeze it and
-pin it with consistency tests.
+**The document is an upper bound.** A hand-written view document (C4) is
+as good as such a surface gets. A sloppier generated one would do worse,
+and by how much is unmeasured.
 
-**Confounded mechanisms.** Compactness and constraint-pruning are not
-separated until the ablation exists.
+**Entangled mechanisms.** Compactness and constraint-carrying are not
+separated until the ablation runs.
 
-**Refusal tasks** can pass by inaction. They are reported separately.
+**Refusals can pass by inaction.** They are therefore reported apart from
+purchases throughout.
 
-**Image tokens** are provider-dependent. Screenshot (C1) cost is read
-from total input.
+**Image accounting is provider-specific.** Some providers itemize image
+tokens and some fold them into the prompt count, so the screenshot (C1)
+is read from total input tokens, and the tiling numbers are a labeled
+estimate.
 
-**Determinism.** Temperature zero is not full determinism. We average
-five repeats. Flat tools (C3) was stable; view document (C4) varies on
-t10; accessibility tree (C2) is noisy.
+**Temperature zero is not determinism.** Results are averaged over five
+repeats. Flat tools (C3) was stable across repeats, the view document
+(C4) varied only on t10, and the accessibility tree (C2) was noisy
+throughout.
 
-**History.** History is task, prior actions, and the current observation.
-That holds the policy fixed. It also means flat tools (C3) cannot
-accumulate a long transcript of past views. A different history policy is
-not tested.
+**The memory policy is fixed.** Agents carry only the task, their prior
+actions, and the current observation. This is the same for every
+condition, but it also means flat tools (C3) cannot compensate by
+accumulating a long transcript, and other memory policies are untested.
 
-**screenshot (C1) illegal metric.** Coordinate clicks rarely set the
-backend flag, so 0.000 illegal/step understates invalid clicks. For
-screenshot (C1), read success, steps, and tokens.
+**The screenshot (C1) error rate understates its errors.** Coordinate
+clicks rarely trigger the backend's validity check, so for the
+screenshot (C1) the informative numbers are success, steps, and tokens.
 
-**Power.** A CI that includes zero is not proof of equality. We do not
-claim significance we do not have.
+**Wide intervals are not equality.** An interval that includes zero, as
+the paired success difference does, means the data cannot distinguish
+the conditions at this sample size, not that they are the same.
 
-**Models.** The main line uses general models that can do all four
-conditions in one API. Specialized computer-use models are out of the
-main line. RQ3 has not been run.
+**Specialized models are out of scope.** The main line uses general
+models that can run all four conditions through one API. Pixel-native
+computer-use models are a planned final check, and the second general
+model has not yet been run.
 
 ## 10. Future work
 
-Immediate: latency; a second general model; the constraint-pruning
-ablation; an ignored-affordance metric. Longer term: a second, harder
-application; a validated Agent Experience (AX) metric suite as a later
-paper; methods for generating the surface automatically, measured
-against the hand-authored bound here.
+Nearest first: instrument latency and re-run timed; run a second and
+then a third general model, reporting each separately; run the
+constraint-stripping ablation; report an ignored-affordance rate per
+model. After that: a second, more complex application, which is the main
+lever on external validity; a validated Agent Experience metric suite,
+which is a separate paper; and automatic generation of the agent
+surface, compiled from the page or extracted by a model, measured
+against the hand-written upper bound established here.
 
-## Appendix: how to reproduce the numbers
+## Appendix: reproducing the numbers
 
-The shop, the four-condition harness, the grader, and the traces behind
-every number live in the project repository. There is no hidden state.
-In order:
-
-1. A scripted, non-model policy must complete every success task on
-   flat tools (C3) and view document (C4) and be refused on the refusal
-   tasks.
-2. The model-free observation-cost baseline (Section 6.1) uses a fixed
-   tokenizer and no API call.
-3. The oracle (Section 6.2) checks the pipeline on the two structured
-   conditions.
-4. The model sweep writes 200 traces (Section 6.3).
-5. The report layer aggregates traces into Tables 1 to 3 and the
-   bootstrap intervals.
-
-Python dependencies and the browser used for screenshot (C1) and
-accessibility tree (C2) are pinned in the repository. This manuscript
-rebuilds to HTML and PDF from the Markdown source.
+The store, the four-condition harness, the grader, and every trace
+behind the tables live in the project repository, with no hidden state.
+The sequence is fixed. A scripted non-model policy must first complete
+every purchase task on flat tools (C3) and view document (C4) and be
+refused on the refusals. The model-free baseline of Section 6.1 then
+runs with a fixed tokenizer and no API call. The oracle of Section 6.2
+validates the pipeline. The model sweep writes its 200 traces, and the
+report layer aggregates them into Tables 1 through 3 with their
+bootstrap intervals. Dependencies and the browser used by the screenshot
+(C1) and accessibility tree (C2) conditions are pinned in the
+repository, and this manuscript rebuilds to HTML and PDF from its
+Markdown source.
 
 ## References
 
-Verified sources only. Titles and URLs below were checked against the
-primary paper or official documentation. No additional citations are
-introduced here.
+Verified sources only. Each entry was checked against the primary paper
+or official documentation. No other citations are asserted.
 
 - WebArena: A Realistic Web Environment for Building Autonomous Agents. https://arxiv.org/abs/2307.13854
 - VisualWebArena: Evaluating Multimodal Agents on Realistic Visually Grounded Web Tasks. https://aclanthology.org/2024.acl-long.50/
