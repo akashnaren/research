@@ -54,7 +54,7 @@ authored for the agent can change how many tokens a task costs and how reliably
 it completes. To test this cleanly we hold everything else fixed — one
 application, one task set, one deterministic grader, one model at a time,
 temperature zero — and vary only the representation across four conditions
-(Section 3). Two of these reuse the human interface (screenshot (C1),
+(Section 3). Two of these reuse the human interface (the screenshot (C1) and the
 accessibility tree (C2)); one is the common flat tool catalog (flat tools (C3));
 and one is a purpose-built *view document* (C4) that states the current view, the
 entities in it, and the actions that are valid right now, with their argument
@@ -81,9 +81,8 @@ are:
 representations built for people: agents that act on the DOM or accessibility
 tree, and screenshot- or pixel-based computer-use agents and models. These
 correspond to our screenshot (C1) and accessibility tree (C2) conditions. The
-relevant point for us is that they
-inherit a representation designed for human perception rather than for an agent's
-decision.
+relevant point for us is that they inherit a representation designed for human
+perception rather than for an agent's decision.
 
 **Optimizing the human representation.** A separate line of work makes the
 human-derived representation cheaper for agents — for example pruning or
@@ -151,8 +150,7 @@ artifact of a surface that disagrees with the application.
 **Dependent variables.** Per run: task success (binary; for refusal tasks,
 correctly declining); input and output tokens summed over steps (including image
 tokens on the screenshot (C1) where the provider itemizes them); step count;
-illegal actions
-(backend rejections); and a `malformed_actions` count (responses that are not a
+illegal actions (backend rejections); and a `malformed_actions` count (responses that are not a
 usable action), tracked separately so that model formatting failures are not
 silently absorbed.
 
@@ -182,8 +180,9 @@ the condition-specific part: **flat tools (C3) additionally pays the full tool
 schema on every call** (the harness sends the function definitions with each
 request), and **the view document (C4) pays for that document** (view, state,
 entities, and per-affordance `enabled` flags and argument schemas). The
-accessibility tree (C2) pays for the verbose human accessibility tree. Reconstructing the canonical path deterministically, the
-median per-step input splits (o200k_base) are:
+accessibility tree (C2) pays for the verbose human tree. Reconstructing the
+canonical path deterministically, the median per-step input splits (o200k_base)
+are:
 
 | condition | system | task+prior | tool schema | observation | per-step total |
 | --- | --- | --- | --- | --- | --- |
