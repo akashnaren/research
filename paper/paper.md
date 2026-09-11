@@ -559,7 +559,173 @@ quantity, the **ignored-affordance rate** (how often a model attempts an action
 the interface marked unavailable), which the second model run (§5.4) is designed
 to measure and which motivates the second paper.
 
-## 7. Limitations
+## 7. Adopting the view document (C4): paths and complexity for existing and future applications
+
+The study measures a hand-authored view document (C4) as an upper bound, which
+naturally raises the practical question of what it would take for a real
+application to expose such a surface. This section addresses that question
+directly. It is not an evaluation — the numbers in Section 5 speak only to the
+hand-authored case — but a structured account of the adoption paths available
+and their relative complexity, so that a reader can judge where the trade-off in
+Section 6 (a per-step token cost now versus a perpetual runtime state-tracking
+tax) is likely to be worth paying.
+
+**Core principle: a faithful projection, not new business logic.** The view
+document (C4) is a *faithful projection of backend state*. The backend remains
+the single source of truth, and the document is a re-serialization of what the
+backend already knows: which view the agent is on, the entities in it, and the
+actions that are valid right now with their argument constraints. The
+surface-vs-backend consistency invariant we enforce with tests (Section 3) is the
+formal statement of this: the document may never advertise an action the backend
+would reject. The consequence for adoption is the central, and encouraging,
+observation of this section: **almost all of the information a C4 document
+carries is validity logic the application already has.** A human interface
+already disables the "Add to cart" button until a size is chosen, already
+validates the address field, already hides the "Pay" button until the cart is
+non-empty and the address is set. Those enable-conditions, form validations, and
+in-stock checks are the same predicates a C4 document serializes into its
+`enabled` flags and argument schemas. Adoption is therefore largely a
+*serialization* problem — expose logic that already exists in a machine-readable
+shape — rather than a request to author new business rules. This reframing is
+what makes the paths below tractable.
+
+### 7.1 A spectrum of adoption paths
+
+Applications can produce a C4 surface in several ways, which differ sharply in
+who pays the authoring cost, how much of the application they cover, and how
+faithful the result is. We describe five, from the highest-leverage (available
+to applications built with agent surfaces in mind) to the most general
+(available to any application, at a cost). Each carries an explicit complexity
+rating on three axes: *effort* (what a developer must do), *coverage* (how much
+of a real application it reaches), and *fidelity* (how faithfully the surface
+tracks backend truth).
+
+**1. Framework-emitted (future applications).** A UI framework in which the
+developer declares views, state, and actions once, and the framework emits *both*
+the human render and the view document (C4) from that single declaration. Because
+the enable-conditions and validation are already written for the human UI, the
+framework can project them into the agent document with no additional developer
+work per view. *Effort: low at the margin (a one-time framework investment, then
+near-zero per application). Coverage: high. Fidelity: high (the two surfaces are
+generated from one declaration, so they cannot drift).* This is the highest-
+leverage path but presupposes framework support that does not yet exist widely.
+
+**2. Derived from a structured backend.** Many applications already hold their
+capabilities in machine-readable specifications: a GraphQL schema, form and
+validation schemas, or a server-driven UI description. Where such a spec exists,
+C4 can be *projected* from it — the types become entities, the mutations become
+affordances, the validation rules become argument constraints and `enabled`
+flags. *Effort: low–medium (write and maintain the projection; reuse existing
+specs). Coverage: medium–high, bounded by how much of the app is actually
+spec-driven. Fidelity: high where the spec is authoritative, lower where the UI
+adds validity logic the spec does not capture.*
+
+**3. Hand-authored per view (what this study does).** A developer writes the
+view document by hand for each view, as a function of backend state. This is
+faithful by construction and is exactly the arm we measure, but it does not
+scale: every view is bespoke work, so it suits a small number of high-value
+applications or flows rather than a whole ecosystem. The pilot gives a concrete
+data point for the per-view cost. In MiniShop, the C4 projection
+(`minishop/surface.py`, `build_surface`, ≈140 lines) is roughly 3–4× the size of
+the flat-tools (C3) definition (`minishop/tools.py`, ≈40 lines). That multiple is
+the honest cost of the document — but it is *mirroring* logic the human templates
+already encode (the same size/stock and view checks that gate the human buttons),
+not inventing new rules, which is why even the hand-authored path is closer to
+transcription than to design. *Effort: medium per application. Coverage: whatever
+is authored. Fidelity: high (authored directly against backend state and pinned
+by the consistency test).*
+
+**4. Compiled from the human surface (existing and legacy applications).** For an
+application that already ships a human UI and cannot be rebuilt, a compiler can
+read the rendered surface — the DOM, ARIA roles, and `disabled` attributes — and
+emit a view document from it. The attractive property is that it costs the
+application *nothing*: no new endpoint, no re-declaration, no backend change.
+The cost is fidelity. A compiled surface inherits whatever the human page
+happens to expose, so it can be *lossy* (state the DOM does not render is
+invisible to it) and it can *disagree* with the backend (a button enabled in the
+DOM that the backend would nonetheless reject). A compiled document must
+therefore be validated against the backend before it is trusted, exactly as our
+consistency invariant validates the hand-authored one. *Effort: near-zero for the
+application (the work is in the compiler). Coverage: broad — it applies to any
+app with a human UI. Fidelity: lossy, and must be checked.*
+
+**5. Model-extracted (a model reads the screen).** The most general path: an LLM
+observes the human surface (a screenshot or the accessibility tree) and *emits*
+the view document itself. It applies to any application with no cooperation
+whatsoever, which is its whole appeal. But it inverts the economics of C4. The
+document's purpose is to pay *once* so the agent does not re-derive state at
+runtime; extracting it with a model moves that cost back to runtime and pays it
+on every step, and it reintroduces exactly the hallucination risk — an
+advertised action the backend rejects — that a faithful projection removes. It
+is best understood as a fallback for surfaces reachable no other way. *Effort:
+near-zero for the application. Coverage: universal. Fidelity: lowest — subject to
+model error, and cost recurs at runtime.*
+
+### 7.2 Cost framing: build-time versus runtime
+
+The five paths above trade a single quantity against another. The view document
+(C4) pays its cost *once*, at build or framework time (paths 1–3) or at compile
+time (path 4); thereafter every agent interaction reads a surface that already
+states what is true and what is allowed. Flat tools (C3), by contrast, pays a
+*perpetual runtime tax*: because it ships no current-view document, the model
+must re-derive the application's state from its own history on every step, for
+the life of the deployment. Adoption effort is thus a one-time (or amortized)
+investment weighed against a recurring per-interaction cost. Two things move
+that balance toward adoption. First, scale: a framework- or spec-derived surface
+amortizes its cost across every application and every run, so the per-interaction
+saving compounds. Second, complexity: the runtime state-tracking tax that C3
+imposes grows with the number of views, the amount of state, and the number of
+ways an action can be invalid — precisely the regime (Section 6) where we expect
+C4's advantage to emerge. On the simple application measured here the tax is
+small, which is why C3 is competitive; the trade is expected to improve for C4
+as applications grow more complex.
+
+### 7.3 A procedure for adding C4 to an existing application
+
+For a developer adding a view document to an application today (the hand-authored
+or spec-derived paths), the work reduces to a short, repeatable procedure:
+
+1. **Enumerate the views.** List the distinct states the UI can be in (catalog,
+   product, cart, checkout, confirmation, …) — the same screens the human UI
+   already has.
+2. **For each view, expose three things:** the current *state* (the fields the
+   view depends on), the relevant *entities* (the objects shown), and the
+   available *actions*, each with its *enable-condition* and *argument
+   constraints*. Crucially, reuse the human UI's existing disable and validation
+   logic here — the predicate that greys out a button is the predicate that sets
+   `enabled: false`, and the form validator that rejects an input is the argument
+   schema.
+3. **Serve the document** at an endpoint or resource — for instance as an MCP
+   resource — so an agent can read the current view on each step.
+4. **Keep the backend as the enforcing source of truth.** The document advertises
+   validity; the backend still checks it. The surface is a projection, never the
+   authority.
+5. **Add a surface-vs-backend consistency check** (as in Section 3) so the
+   document can never advertise an action the backend would reject. This is the
+   test that makes the projection trustworthy and prevents the two surfaces from
+   drifting apart over time.
+
+### 7.4 Complexity summary
+
+Table 4 summarizes the five paths on the three axes above and states when each is
+appropriate.
+
+**Table 4.** Adoption paths for the view document (C4).
+
+| Adoption path | App effort | Coverage | Fidelity | When to use |
+| --- | --- | --- | --- | --- |
+| Framework-emitted | Low at scale (one-time framework cost) | High | High (single declaration, no drift) | New applications; ecosystems adopting an agent-aware UI framework |
+| Derived from a structured backend | Low–medium (write/maintain a projection) | Medium–high (bounded by spec coverage) | High where the spec is authoritative | Apps with GraphQL, form/validation schemas, or server-driven UI |
+| Hand-authored per view | Medium per app | Whatever is authored | High (authored against backend state; test-pinned) | A few high-value apps or flows; the upper-bound reference |
+| Compiled from the human surface | Near-zero (work is in the compiler) | Broad (any app with a human UI) | Lossy; must be validated against the backend | Existing/legacy apps that cannot be rebuilt |
+| Model-extracted | Near-zero | Universal | Lowest; recurs at runtime; hallucination risk | Fallback when no other surface is reachable |
+
+Empirically validating the two *generated* paths — the compiled and
+model-extracted surfaces — against the hand-authored upper bound established in
+this study (how much coverage and fidelity they retain, and at what cost) is left
+to future work (Section 9).
+
+## 8. Limitations
 
 This is one model on one small, synthetic application with a ten-task set;
 statistical power is limited and the results are provisional. The C4 document is
@@ -570,7 +736,7 @@ measured. Refusal tasks can be
 passed by inaction and are reported separately. Temperature-zero decoding is not
 fully deterministic, which is why results are averaged over repeats.
 
-## 8. Future work
+## 9. Future work
 
 Immediate: latency instrumentation and a timed re-run; a second and third general
 model for model-agnosticism; the constraint-pruning ablation; and an
