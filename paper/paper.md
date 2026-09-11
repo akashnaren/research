@@ -54,7 +54,7 @@ authored for the agent can change how many tokens a task costs and how reliably
 it completes. To test this cleanly we hold everything else fixed — one
 application, one task set, one deterministic grader, one model at a time,
 temperature zero — and vary only the representation across four conditions
-(Section 3). Two of these reuse the human interface (the screenshot (C1) and the
+(Section 4). Two of these reuse the human interface (the screenshot (C1) and the
 accessibility tree (C2)); one is the common flat tool catalog (flat tools (C3));
 and one is a purpose-built *view document* (C4) that states the current view, the
 entities in it, and the actions that are valid right now, with their argument
@@ -67,15 +67,64 @@ are:
 
 1. A controlled method for measuring interface representations for agents at
    **matched action grain**, so that differences are attributable to the
-   representation rather than to a different set of operations (Section 3).
+   representation rather than to a different set of operations (Section 4).
 2. A **cost–reliability (Pareto)** framing with paired per-task inference, rather
-   than a success-only leaderboard (Section 4).
+   than a success-only leaderboard (Section 5).
 3. First evidence on one application and model, including a **model-free
    observation-cost baseline** and an execution-based grader, showing that
    human-surface representations are dominated while the structured
-   representations present a subtler, model-dependent trade-off (Section 5).
+   representations present a subtler, model-dependent trade-off (Section 6).
 
-## 2. Related work
+## 2. Important terms
+
+This section defines the technical and coined terms used throughout the paper so
+that later sections can refer to them without re-deriving them. Each definition
+is consistent with how the term is used in the study.
+
+- **Interface representation** — the form in which an application's state and
+  available actions are presented to an agent; the study's independent variable.
+- **Condition** — one of the four representations compared: screenshot (C1),
+  accessibility tree (C2), flat tools (C3), and view document (C4).
+- **View document (C4)** — a purpose-built JSON object stating the current view,
+  its state and entities, and the affordances valid now, each with an `enabled`
+  flag and an argument schema.
+- **Flat tools (C3)** — a stateless catalog of callable functions with no
+  current-view document; the model must track state itself.
+- **Screenshot (C1)** — a rendered image of the human page; the agent acts via
+  coordinates, typing, and scrolling.
+- **Accessibility tree (C2)** — a text tree of the human page (roles and names);
+  the agent acts on named elements.
+- **Affordance** — an action the interface exposes, with an identifier, an
+  `enabled` flag, and an argument schema.
+- **Enabled flag** — a boolean on an affordance indicating whether it is valid in
+  the current state.
+- **Matched action grain** — the property that flat tools (C3) and the view
+  document (C4) expose the same operations, so any difference between them is
+  attributable only to the view document.
+- **Illegal action** — an action the backend rejects (HTTP 400); a validity
+  violation.
+- **Malformed action** — a model response that is not a usable action (wrong
+  shape); tracked separately from illegal actions.
+- **Ignored-affordance rate** — how often a model attempts an action the
+  interface marked unavailable (the t10 phenomenon).
+- **Step / step cap** — one observe–decide–act cycle; the cap (20) bounds a run.
+- **Execution-based grader** — a deterministic checker over backend state; never
+  a model judge.
+- **Cost–reliability (Pareto) frontier** — the trade-off of token cost versus
+  success; a point is on the frontier if nothing is both cheaper and at least as
+  reliable.
+- **Paired per-task inference / bootstrap CI** — comparing conditions
+  task-by-task with resampled 95% confidence intervals.
+- **Observation cost** — the tokens an observation adds to context per step
+  (text-tokenized for C2/C3/C4; image-tiled for C1).
+- **Oracle control** — a deterministic perfect-agent baseline that validates the
+  measurement pipeline.
+- **Surface–backend consistency invariant** — the tested guarantee that the view
+  document never advertises an action the backend would reject.
+- **Refusal task** — a task whose correct behavior is to decline; reported
+  separately from success tasks.
+
+## 3. Related work
 
 **Reusing the human interface.** A large body of work drives applications through
 representations built for people: agents that act on the DOM or accessibility
@@ -107,7 +156,7 @@ attribution of cost and reliability to representation.
 it is reproduced in the References section below and will be formatted for the
 target venue.)*
 
-## 3. Study design
+## 4. Study design
 
 **Application.** MiniShop is a small store with a catalogue, product pages, a
 cart, and checkout. It is deliberately simple and its backend state is the single
@@ -145,7 +194,7 @@ that the document never advertises an action the backend would reject and that i
 size enumerations match stock exactly, so a favorable C4 result cannot be an
 artifact of a surface that disagrees with the application.
 
-## 4. Metrics and analysis
+## 5. Metrics and analysis
 
 **Dependent variables.** Per run: task success (binary; for refusal tasks,
 correctly declining); input and output tokens summed over steps (including image
@@ -253,12 +302,12 @@ timing and report median time-to-completion per condition.
 ### Procedures
 
 This subsection states the exact, repeatable procedures behind the numbers. It
-does not re-derive the study design (Section 3) or the token accounting above; it
+does not re-derive the study design (Section 4) or the token accounting above; it
 records *how a run executes, how each metric is computed, how the data is
 analyzed, and how to reproduce all of it.*
 
 **Experimental procedure (one run).** A "run" is one (condition, task, repeat)
-triple. The harness holds everything in Section 3 fixed — the MiniShop backend
+triple. The harness holds everything in Section 4 fixed — the MiniShop backend
 and its execution grader, the ten-task set (seven success, three refusal),
 temperature 0, a step cap of 20, and a history limited to the task text, the
 prior actions, and the current observation — and varies only the representation
@@ -280,8 +329,8 @@ verdict over the backend order record — for success tasks the order must match
 task specification; for refusal tasks no forbidden order may be placed — never
 another model. *Input and output tokens* are the provider's reported usage summed
 over the run's steps; for the screenshot (C1), image tokens are read from total
-input tokens because Vertex folds them into `prompt_tokens` (Section 4). The
-per-condition observation cost is counted two different ways, as Section 4
+input tokens because Vertex folds them into `prompt_tokens` (Section 5). The
+per-condition observation cost is counted two different ways, as Section 5
 specifies: the text conditions (C2, C3, C4) are counted by tokenizer on the
 serialized observation, while the screenshot (C1) is counted by the
 resolution-driven image-tiling model. *Steps* is the number of model calls until
@@ -311,12 +360,12 @@ repository with no hidden state, in this order:
    must complete every success task on C3 and C4 and be refused on the refusal
    tasks before any model is run.
 2. `python -m harness.obs_cost` — the model-free observation-cost baseline and the
-   per-condition token composition (Section 5.1), `o200k_base` tokenizer, no API
+   per-condition token composition (Section 6.1), `o200k_base` tokenizer, no API
    call.
 3. `python -m harness.model_loop --oracle --conditions C3,C4` — the deterministic
-   pipeline control (Section 5.2).
+   pipeline control (Section 6.2).
 4. `python -m harness.model_loop --repeats 5` (per condition) — the model sweep
-   that writes the 200 per-run traces (Section 5.3).
+   that writes the 200 per-run traces (Section 6.3).
 5. `python -m harness.report --figures` — aggregates the traces into the tables,
    bootstrap CIs, the paired comparison, and the Pareto/paired figures.
 6. `python paper/build.py` — renders this manuscript (`paper.md` →
@@ -327,19 +376,19 @@ browser render and for `paper/build.py`, and the model registry in
 `harness/models.py`) is pinned under `.cursor/`, so the sequence above runs
 identically on a fresh checkout.
 
-## 5. Results
+## 6. Results
 
 We report the results in three layers, from the model-free lower bound to the
-model run itself. Section 5.1 is a deterministic observation-cost baseline that
-needs no model. Section 5.2 is the oracle control that validates the pipeline.
-Section 5.3 is the first model run — `gemini-2.5-flash`, N=5 — read one metric
+model run itself. Section 6.1 is a deterministic observation-cost baseline that
+needs no model. Section 6.2 is the oracle control that validates the pipeline.
+Section 6.3 is the first model run — `gemini-2.5-flash`, N=5 — read one metric
 at a time (success, token cost, steps, illegal/malformed actions), then broken
 out per task, then analyzed as a paired C4-vs-C3 comparison, and finally
 summarized as a per-condition error analysis. Everything here is one model on
 one synthetic application with ten tasks, so we read the coarse orderings and
 treat the fine C3-vs-C4 margin as provisional.
 
-### 5.1 A model-free observation-cost baseline
+### 6.1 A model-free observation-cost baseline
 
 Before any model is run, we measure deterministically how many tokens each
 condition's observation costs per step, replaying each task's canonical path and
@@ -351,7 +400,7 @@ screenshot, and the view document is slightly cheaper per step than the flat too
 catalog. This is the observation term only, along the minimal path; it does not
 include step-count effects, which the model run adds.
 
-### 5.2 Pipeline control (oracle)
+### 6.2 Pipeline control (oracle)
 
 A deterministic "oracle" agent that replays the correct policy validates the full
 measurement pipeline end to end and provides a best-case reference: both flat
@@ -359,7 +408,7 @@ tools (C3) and the view document (C4) reach 100% success. This isolates apparatu
 correctness from model behavior, so any success deficit in the model run below is
 attributable to the model, not to the harness or grader.
 
-### 5.3 First model run: `gemini-2.5-flash` (N = 5)
+### 6.3 First model run: `gemini-2.5-flash` (N = 5)
 
 We run one general model, `gemini-2.5-flash` (via Vertex, temperature 0, step cap
 20), across all four conditions on all ten tasks, five times each — 200 runs in
@@ -391,7 +440,7 @@ these intervals are wide, and the C3-over-C4 success gap is a single task.
 #### Token cost
 
 Input-token cost separates the conditions by an order of magnitude, and the
-mechanism is the per-step observation decomposition of Section 4 (per-step
+mechanism is the per-step observation decomposition of Section 5 (per-step
 observation cost × steps + fixed overhead) — we do not repeat that accounting
 here. The screenshot (C1) is by far the most expensive at a median ~46,338 input
 tokens per task, roughly 10× the view document (C4) and ~15× flat tools (C3);
@@ -401,7 +450,7 @@ Among the text conditions, flat tools (C3) is cheapest (~3,134), the view docume
 (C4) is next (~4,455), and the accessibility tree (C2) is most expensive and most
 variable (~6,770 [5,835, 9,714]) because tree size tracks page content. Notably,
 the model-run ordering of C3 below C4 *reverses* the minimal-path baseline of
-Section 5.1 (where C4 was cheaper per step): once real step counts are in play,
+Section 6.1 (where C4 was cheaper per step): once real step counts are in play,
 the C4 document grows as the cart fills, so its mid-session documents outweigh
 C3's compact status objects.
 
@@ -517,7 +566,7 @@ often a model attempts an action the interface marked unavailable — an
 five repeats in the main sweep (all via the identical early `set_address`), and a
 diagnostic t10-only re-run reproduced it on five of five.
 
-### 5.4 Second model (RQ3) — *(forthcoming)*
+### 6.4 Second model (RQ3) — *(forthcoming)*
 
 Whether "flat tools (C3) is Pareto-preferred" generalizes beyond one model is
 open. A second general model (e.g. a mid-tier Claude or Grok) will test in
@@ -525,14 +574,14 @@ particular whether other models obey the `enabled` flag on the t10 path — that
 whether the ignored-affordance rate above is a property of this model or of the
 task.
 
-### 5.5 Constraint-pruning ablation — *(forthcoming)*
+### 6.5 Constraint-pruning ablation — *(forthcoming)*
 
 To explain the view document (C4)'s token overhead and separate *compactness*
 from *constraint-carrying*, we will strip the `enabled` flags and argument
 enumerations from the C4 document (retaining view and entities) and measure
 whether the step savings survive without the constraint information.
 
-## 6. Discussion
+## 7. Discussion
 
 The provisional headline — that on the simplest application, with a model that
 ignores constraints, a flat tool catalog (C3) is preferred to the view document
@@ -550,24 +599,24 @@ safety-sensitive settings where preventing illegal actions is itself valuable. C
 already shows the mechanism here: it uses fewer steps and keeps a near-zero
 illegal-action rate.
 
-The t10 result (§5.3, "What the t10 failure means, plainly") is a finding in its
+The t10 result (§6.3, "What the t10 failure means, plainly") is a finding in its
 own right: a truthful `enabled: false` flag was present and ignored. That the
 document *told the truth* — and agreed with the backend, an invariant we test —
 and the model *still acted against it* is precisely the kind of agent-experience
 signal a metric suite should capture. It also names a concrete, model-comparable
 quantity, the **ignored-affordance rate** (how often a model attempts an action
-the interface marked unavailable), which the second model run (§5.4) is designed
+the interface marked unavailable), which the second model run (§6.4) is designed
 to measure and which motivates the second paper.
 
-## 7. Adopting the view document (C4): paths and complexity for existing and future applications
+## 8. Adopting the view document (C4): paths and complexity for existing and future applications
 
 The study measures a hand-authored view document (C4) as an upper bound, which
 naturally raises the practical question of what it would take for a real
 application to expose such a surface. This section addresses that question
-directly. It is not an evaluation — the numbers in Section 5 speak only to the
+directly. It is not an evaluation — the numbers in Section 6 speak only to the
 hand-authored case — but a structured account of the adoption paths available
 and their relative complexity, so that a reader can judge where the trade-off in
-Section 6 (a per-step token cost now versus a perpetual runtime state-tracking
+Section 7 (a per-step token cost now versus a perpetual runtime state-tracking
 tax) is likely to be worth paying.
 
 **Core principle: a faithful projection, not new business logic.** The view
@@ -575,7 +624,7 @@ document (C4) is a *faithful projection of backend state*. The backend remains
 the single source of truth, and the document is a re-serialization of what the
 backend already knows: which view the agent is on, the entities in it, and the
 actions that are valid right now with their argument constraints. The
-surface-vs-backend consistency invariant we enforce with tests (Section 3) is the
+surface-vs-backend consistency invariant we enforce with tests (Section 4) is the
 formal statement of this: the document may never advertise an action the backend
 would reject. The consequence for adoption is the central, and encouraging,
 observation of this section: **almost all of the information a C4 document
@@ -589,7 +638,7 @@ in-stock checks are the same predicates a C4 document serializes into its
 shape — rather than a request to author new business rules. This reframing is
 what makes the paths below tractable.
 
-### 7.1 A spectrum of adoption paths
+### 8.1 A spectrum of adoption paths
 
 Applications can produce a C4 surface in several ways, which differ sharply in
 who pays the authoring cost, how much of the application they cover, and how
@@ -661,7 +710,7 @@ is best understood as a fallback for surfaces reachable no other way. *Effort:
 near-zero for the application. Coverage: universal. Fidelity: lowest — subject to
 model error, and cost recurs at runtime.*
 
-### 7.2 Cost framing: build-time versus runtime
+### 8.2 Cost framing: build-time versus runtime
 
 The five paths above trade a single quantity against another. The view document
 (C4) pays its cost *once*, at build or framework time (paths 1–3) or at compile
@@ -675,12 +724,12 @@ that balance toward adoption. First, scale: a framework- or spec-derived surface
 amortizes its cost across every application and every run, so the per-interaction
 saving compounds. Second, complexity: the runtime state-tracking tax that C3
 imposes grows with the number of views, the amount of state, and the number of
-ways an action can be invalid — precisely the regime (Section 6) where we expect
+ways an action can be invalid — precisely the regime (Section 7) where we expect
 C4's advantage to emerge. On the simple application measured here the tax is
 small, which is why C3 is competitive; the trade is expected to improve for C4
 as applications grow more complex.
 
-### 7.3 A procedure for adding C4 to an existing application
+### 8.3 A procedure for adding C4 to an existing application
 
 For a developer adding a view document to an application today (the hand-authored
 or spec-derived paths), the work reduces to a short, repeatable procedure:
@@ -700,12 +749,12 @@ or spec-derived paths), the work reduces to a short, repeatable procedure:
 4. **Keep the backend as the enforcing source of truth.** The document advertises
    validity; the backend still checks it. The surface is a projection, never the
    authority.
-5. **Add a surface-vs-backend consistency check** (as in Section 3) so the
+5. **Add a surface-vs-backend consistency check** (as in Section 4) so the
    document can never advertise an action the backend would reject. This is the
    test that makes the projection trustworthy and prevents the two surfaces from
    drifting apart over time.
 
-### 7.4 Complexity summary
+### 8.4 Complexity summary
 
 Table 4 summarizes the five paths on the three axes above and states when each is
 appropriate.
@@ -723,9 +772,9 @@ appropriate.
 Empirically validating the two *generated* paths — the compiled and
 model-extracted surfaces — against the hand-authored upper bound established in
 this study (how much coverage and fidelity they retain, and at what cost) is left
-to future work (Section 9).
+to future work (Section 10).
 
-## 8. Limitations
+## 9. Limitations
 
 This is one model on one small, synthetic application with a ten-task set;
 statistical power is limited and the results are provisional. The C4 document is
@@ -736,7 +785,7 @@ measured. Refusal tasks can be
 passed by inaction and are reported separately. Temperature-zero decoding is not
 fully deterministic, which is why results are averaged over repeats.
 
-## 9. Future work
+## 10. Future work
 
 Immediate: latency instrumentation and a timed re-run; a second and third general
 model for model-agnosticism; the constraint-pruning ablation; and an
@@ -750,7 +799,7 @@ hand-authored upper bound established here.
 
 The application, four-condition harness, deterministic grader, model registry, and
 the tooling used for every number above are in the repository; the exact command
-sequence is the reproducibility checklist in Section 4 ("Procedures"), and the
+sequence is the reproducibility checklist in Section 5 ("Procedures"), and the
 environment is defined in `.cursor/`. See
 [`docs/research-plan.md`](../docs/research-plan.md) for the full methodology and
 [`docs/paper-outline.md`](../docs/paper-outline.md) for section status.
