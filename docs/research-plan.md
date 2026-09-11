@@ -709,5 +709,33 @@ interfaces; the individual metrics are not themselves new (see limitations).
 6. Threats to validity — Section 8.
 7. Discussion — what the evidence implies for shipping agent-facing surfaces;
    the specialized-model check.
-8. Limitations and future work — second application, larger task set, the AX
+8. Adoption paths and complexity — how existing and future applications can
+   expose the view document (C4), and the effort/coverage/fidelity trade-offs.
+9. Limitations and future work — second application, larger task set, the AX
    metric suite (the second paper).
+
+## 11. Adoption and generalization (deployment)
+
+The applied question the paper motivates but does not answer — *how would a real
+application expose an agent-facing surface?* — is developed in the paper as a
+dedicated section ("Adopting the view document (C4): paths and complexity for
+existing and future applications"), which is the primary home for this material.
+The plan mirrors only the skeleton here so the roadmap stays complete.
+
+The core reframing is that C4 is a *faithful projection of backend state*, and
+that it mostly *re-serializes validity logic the application already has* for its
+human UI (disabled buttons, form validation, in-stock checks) — so adoption is
+largely a serialization problem, not new business logic. The paper lays out a
+spectrum of adoption paths, each rated on effort / coverage / fidelity:
+framework-emitted (future apps; low marginal effort at scale, highest leverage),
+derived from a structured backend (GraphQL / form schemas / server-driven UI;
+low–medium), hand-authored per view (what this study does — faithful but does not
+scale; the C4 projection `minishop/surface.py::build_surface` is ≈3–4× the C3
+`minishop/tools.py` definition), compiled from the human surface (DOM / ARIA /
+`disabled` for legacy apps; zero app effort but lossy, must be validated against
+the backend), and model-extracted (most general, but moves cost to runtime and
+reintroduces hallucination risk; a fallback). The cost framing is that C4 pays
+*once* at build/framework time while flat tools (C3) pays a *perpetual runtime*
+state-tracking tax, with the trade improving as applications grow more complex.
+Empirically validating the *generated* surfaces (compiled or model-extracted)
+against the hand-authored upper bound established in this study is future work.
