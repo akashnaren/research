@@ -253,71 +253,208 @@ timing and report median time-to-completion per condition.
 
 ## 5. Results
 
+We report the results in three layers, from the model-free lower bound to the
+model run itself. Section 5.1 is a deterministic observation-cost baseline that
+needs no model. Section 5.2 is the oracle control that validates the pipeline.
+Section 5.3 is the first model run — `gemini-2.5-flash`, N=5 — read one metric
+at a time (success, token cost, steps, illegal/malformed actions), then broken
+out per task, then analyzed as a paired C4-vs-C3 comparison, and finally
+summarized as a per-condition error analysis. Everything here is one model on
+one synthetic application with ten tasks, so we read the coarse orderings and
+treat the fine C3-vs-C4 margin as provisional.
+
 ### 5.1 A model-free observation-cost baseline
 
 Before any model is run, we measure deterministically how many tokens each
 condition's observation costs per step, replaying each task's canonical path and
 counting tokens with a fixed tokenizer. Median per-step observation cost is
-approximately 1105 tokens for the C1 screenshot estimate, 512 for C3 (which
-re-sends the tool schema each step), and 453 for C4. Text representations are thus
-about 2.4× cheaper per look than a screenshot, and the view document is slightly
-cheaper per step than the flat tool catalog. This is the observation term only,
-along the minimal path; it does not include step-count effects.
+approximately 1105 tokens for the screenshot (C1) estimate, 512 for flat tools
+(C3) (which re-sends the tool schema each step), and 453 for the view document
+(C4). Text representations are thus about 2.4× cheaper per look than a
+screenshot, and the view document is slightly cheaper per step than the flat tool
+catalog. This is the observation term only, along the minimal path; it does not
+include step-count effects, which the model run adds.
 
 ### 5.2 Pipeline control (oracle)
 
 A deterministic "oracle" agent that replays the correct policy validates the full
-measurement pipeline end to end and provides a best-case reference: both C3 and C4
-reach 100% success. This isolates apparatus correctness from model behavior.
+measurement pipeline end to end and provides a best-case reference: both flat
+tools (C3) and the view document (C4) reach 100% success. This isolates apparatus
+correctness from model behavior, so any success deficit in the model run below is
+attributable to the model, not to the harness or grader.
 
 ### 5.3 First model run: `gemini-2.5-flash` (N = 5)
 
-We run one general model across all four conditions on all ten tasks, five times
-each (temperature 0). Table 1 reports the aggregate.
+We run one general model, `gemini-2.5-flash` (via Vertex, temperature 0, step cap
+20), across all four conditions on all ten tasks, five times each — 200 runs in
+total. Table 1 reports the per-condition aggregate; the subsections that follow
+read it one metric at a time.
 
-**Table 1.** Per-condition results, `gemini-2.5-flash`, N=5 (95% CIs bootstrapped).
+**Table 1.** Per-condition results, `gemini-2.5-flash`, N=5 (95% CIs
+bootstrapped over the 50 task-repeat units per cell).
 
-| Condition | Success (95% CI) | Median input tokens | Illegal/step | Malformed/step |
-| --- | --- | --- | --- | --- |
-| C1 screenshot | 30% [18, 42] | ~46,338 | 0.000 | 0.000 |
-| C2 a11y tree | 72% [60, 84] | ~6,770 | 0.198 | 0.116 |
-| C3 flat tools | 100% [100, 100] | ~3,134 | 0.000 | 0.000 |
-| C4 view document | 92% [84, 98] | ~4,455 | 0.016 | 0.000 |
+| Condition | Success (95% CI) | Median input tokens (95% CI) | Median steps | Illegal/step | Malformed/step |
+| --- | --- | --- | --- | --- | --- |
+| screenshot (C1) | 30% [18, 42] | ~46,338 [46,324, 46,368] | 20 | 0.000 | 0.000 |
+| accessibility tree (C2) | 72% [60, 84] | ~6,770 [5,835, 9,714] | 7 | 0.198 | 0.116 |
+| flat tools (C3) | 100% [100, 100] | ~3,134 [3,118, 3,154] | 7 | 0.000 | 0.000 |
+| view document (C4) | 92% [84, 98] | ~4,455 [4,413, 4,491] | 6 | 0.016 | 0.000 |
 
-Two results are clear. First, the **human-surface conditions are dominated.** The
-screenshot (C1) costs roughly ten times the input tokens of the cheapest
-representation, reaches the step cap on every task, and succeeds on fewer than a
-third; pixel-to-coordinate grounding is the failure mode. The accessibility tree
-(C2) is cheaper but the most error-prone, with substantial illegal- and
-malformed-action rates.
+#### Success
 
-Second, among the **structured conditions the trade-off is subtle.** Paired
-per-task analysis (C4 minus C3, over the seven success tasks) shows the view
-document **significantly reduces steps** (−1.17 per task; CI excludes zero) but
-**significantly increases input tokens** (+1,404 per task; CI excludes zero) and
-does **not** significantly change success (the CI includes zero). On the axes we
-measured, C3 is therefore Pareto-preferred on this application and model. C4's
-only success deficit is a single task (t10), which we diagnose next.
+The two human-surface conditions are clearly dominated on success. The screenshot
+(C1) passes only 30% of runs [18, 42] and none of the seven success tasks (its
+passes are all refusal tasks). The accessibility tree (C2) reaches 72% [60, 84]
+but is the least trustworthy number in the table, because its failures mix backend
+rejections and malformed responses (below). The two structured conditions clear
+the human surface comfortably: flat tools (C3) is perfect (100% [100, 100]) and
+the view document (C4) is near-perfect (92% [84, 98]), its only deficit isolated
+to task t10 (analyzed below). Read cautiously: with five repeats over ten tasks
+these intervals are wide, and the C3-over-C4 success gap is a single task.
 
-**The t10 finding.** On task t10, C4 fails because the model attempts to set the
-shipping address while still on the product view — an action the view document
-correctly marks `enabled: false` and the backend correctly rejects. The surface
-and backend agree; the model simply ignored the document's `enabled` flag. This is
-genuine model behavior, not a surface bug, and it suggests a measurable AX signal:
-the rate at which a model selects an affordance the document marks unavailable.
+#### Token cost
+
+Input-token cost separates the conditions by an order of magnitude, and the
+mechanism is the per-step observation decomposition of Section 4 (per-step
+observation cost × steps + fixed overhead) — we do not repeat that accounting
+here. The screenshot (C1) is by far the most expensive at a median ~46,338 input
+tokens per task, roughly 10× the view document (C4) and ~15× flat tools (C3);
+because Vertex folds image tokens into `prompt_tokens`, that cost is read from
+total input tokens, not from the itemized `image_tokens` field (which reads 0).
+Among the text conditions, flat tools (C3) is cheapest (~3,134), the view document
+(C4) is next (~4,455), and the accessibility tree (C2) is most expensive and most
+variable (~6,770 [5,835, 9,714]) because tree size tracks page content. Notably,
+the model-run ordering of C3 below C4 *reverses* the minimal-path baseline of
+Section 5.1 (where C4 was cheaper per step): once real step counts are in play,
+the C4 document grows as the cart fills, so its mid-session documents outweigh
+C3's compact status objects.
+
+#### Steps
+
+Step count is where the view document (C4) helps. C4 uses the fewest median steps
+(6) and flat tools (C3) one more (7); paired per-task analysis (below) confirms
+the −1.17-step difference is significant. The screenshot (C1) sits at the step cap
+(median 20) because it never completes a success task and simply exhausts the
+budget. The accessibility tree (C2) has a median of 7 but a long tail: it too
+hits the cap on the multi-item task t09.
+
+#### Illegal and malformed actions
+
+We track two distinct error signals: illegal actions (the backend rejects an
+attempted action) and malformed actions (the model emits a non-object response —
+a JSON array or prose — that is not a usable action). The screenshot (C1) and
+flat tools (C3) are clean on both (0.000 each). The view document (C4) has a
+small illegal rate (0.016/step), concentrated entirely on t10. The accessibility
+tree (C2) is the outlier on both axes — 0.198 illegal/step and 0.116
+malformed/step — so its 72% success masks a genuinely noisy interaction: the
+human tree invites named clicks and fills on elements the backend then rejects,
+and the model periodically returns responses the loop cannot parse. Keeping the
+malformed count separate (rather than silently coercing it to a no-op) is what
+makes C2's error composition honest.
+
+#### Per-task breakdown
+
+Table 2 breaks the run down per task so the patterns behind the aggregates are
+visible. Each cell packs the three per-task medians for that condition: **success
+rate · median steps · median input tokens**, computed over the five repeats
+(refusal tasks are marked *r*).
+
+**Table 2.** Per-task readout, `gemini-2.5-flash`, N=5. Cell = success rate ·
+median steps · median input tokens.
+
+| Task | | screenshot (C1) | accessibility tree (C2) | flat tools (C3) | view document (C4) |
+| --- | --- | --- | --- | --- | --- |
+| t01 | | 0% · 20 · 46,368 | 20% · 12 · 11,702 | 100% · 7 · 3,154 | 100% · 6 · 4,498 |
+| t02 | | 0% · 20 · 46,368 | 100% · 11 · 10,809 | 100% · 7 · 3,154 | 100% · 6 · 4,486 |
+| t03 | *r* | 100% · 2 · 4,184 | 100% · 2 · 1,997 | 100% · 2 · 1,081 | 100% · 2 · 1,597 |
+| t04 | | 0% · 20 · 46,268 | 0% · 6 · 5,835 | 100% · 7 · 3,118 | 100% · 6 · 4,423 |
+| t05 | *r* | 100% · 20 · 46,018 | 100% · 3 · 2,605 | 100% · 2 · 713 | 100% · 2 · 1,528 |
+| t06 | | 0% · 20 · 46,328 | 100% · 10 · 9,714 | 100% · 7 · 3,144 | 100% · 6 · 4,491 |
+| t07 | *r* | 100% · 20 · 46,348 | 100% · 2 · 1,990 | 100% · 2 · 1,079 | 100% · 1 · 905 |
+| t08 | | 0% · 20 · 46,324 | 100% · 7 · 6,690 | 100% · 7 · 3,124 | 100% · 6 · 4,413 |
+| t09 | | 0% · 20 · 46,428 | 0% · 20 · 21,658 | 100% · 12 · 5,833 | 100% · 10 · 7,867 |
+| t10 | | 0% · 20 · 46,368 | 100% · 7 · 6,770 | 100% · 7 · 3,154 | 20% · 6 · 4,544 |
+
+Four patterns stand out. **The screenshot (C1) hits the step cap (20) on every
+task it does not refuse** and fails all seven success tasks; its only passes are
+the refusal tasks (t03 by an early refusal, t05 and t07 by exhausting the budget
+without placing the forbidden order), and its cost is a nearly flat ~46k tokens
+because image cost is set by viewport, not content. **The accessibility tree (C2)
+is erratic**: it fails t01 (20%), t04 (0%), and the two-item t09 (0%, step-capped
+at 20 with the heaviest token load of any text-condition cell, ~21.7k). **Flat
+tools (C3) is uniformly clean** — 100% on every task at ~3k tokens and ~7 steps.
+**The view document (C4)'s deficit is isolated to t10** (20%); on every other task
+it matches C3's success while using one fewer step (6 vs 7, and 10 vs 12 on t09)
+and consistently more input tokens.
+
+#### Paired C4-vs-C3 analysis
+
+Because the same tasks run under every condition, we compare the view document
+(C4) against flat tools (C3) paired per task: for each task we average the outcome
+over its five repeats, take the C4−C3 difference, and bootstrap a 95% CI over
+tasks (fixed seed), reporting the seven success tasks and three refusal tasks
+separately. Table 3 gives all three metrics.
+
+**Table 3.** Paired C4−C3 per-task differences, `gemini-2.5-flash`. Positive =
+C4 is higher.
+
+| Task set | n | Metric | Mean diff (C4 − C3) | 95% CI | Excludes 0? |
+| --- | --- | --- | --- | --- | --- |
+| success | 7 | success | −0.114 | [−0.343, 0.000] | no |
+| success | 7 | input tokens | +1,404 | [+1,317, +1,549] | **yes** |
+| success | 7 | steps | −1.17 | [−1.51, −1.00] | **yes** |
+| refusal | 3 | success | 0.000 | [0.000, 0.000] | no |
+| refusal | 3 | input tokens | +386 | [−174, +815] | no |
+| refusal | 3 | steps | −0.33 | [−1.00, 0.00] | no |
+
+On the success tasks the view document **significantly reduces steps** (−1.17 per
+task; CI excludes zero — the whole point of a current-view/affordance document)
+but **significantly increases input tokens** (+1,404 per task; CI excludes zero,
+and every one of the seven success tasks is positive) and does **not**
+significantly change success (the CI [−0.343, 0.000] includes zero; the entire
+point estimate is the t10 deficit). On the axes we measured, flat tools (C3) is
+therefore Pareto-preferred here — cheaper and at least as reliable — so H2's
+specific claim that C4 dominates is not supported for this model and application.
+On the refusal tasks nothing separates the two conditions: both refuse correctly
+on all three, and the token and step differences are small with CIs that include
+zero. C4 keeps the fewest steps throughout, but on this small application that
+step saving does not offset its per-step token cost.
+
+#### What the t10 failure means, plainly
+
+Task t10 asks the agent to buy an item and ship it to an address. The valid order
+of operations is: open the product, add it to the cart, go to checkout, and *then*
+enter the shipping address — an address cannot be entered before checkout is
+reached. On this task the model tried to enter the address too early, while still
+on the product page. Because setting an address is only valid at checkout, the
+view document (C4) had explicitly labeled that action unavailable
+(`enabled: false`) at that step, and the backend refused it. The key point is what
+kind of failure this is: it is not a bug in the interface — the document was
+correct and agreed with the backend (an invariant we enforce with a test) — it is
+the model choosing to ignore a rule the interface clearly stated. This is central
+to the idea of the view document (C4): its value is that it tells the agent what
+is allowed right now, so a model that reads and respects those labels avoids the
+mistake, while a model that ignores them (as this one did) gains nothing from the
+extra information. It also gives a concrete quantity to measure across models: how
+often a model attempts an action the interface marked unavailable — an
+"ignored-affordance" rate. The failure is reproducible: C4 fails t10 on four of
+five repeats in the main sweep (all via the identical early `set_address`), and a
+diagnostic t10-only re-run reproduced it on five of five.
 
 ### 5.4 Second model (RQ3) — *(forthcoming)*
 
-Whether "C3 is Pareto-preferred" generalizes beyond one model is open. A second
-general model (e.g. a mid-tier Claude or Grok) will test in particular whether
-other models obey the `enabled` flag on the t10 path.
+Whether "flat tools (C3) is Pareto-preferred" generalizes beyond one model is
+open. A second general model (e.g. a mid-tier Claude or Grok) will test in
+particular whether other models obey the `enabled` flag on the t10 path — that is,
+whether the ignored-affordance rate above is a property of this model or of the
+task.
 
 ### 5.5 Constraint-pruning ablation — *(forthcoming)*
 
-To explain C4's token overhead and separate *compactness* from
-*constraint-carrying*, we will strip the `enabled` flags and argument enumerations
-from the C4 document (retaining view and entities) and measure whether the step
-savings survive without the constraint information.
+To explain the view document (C4)'s token overhead and separate *compactness*
+from *constraint-carrying*, we will strip the `enabled` flags and argument
+enumerations from the C4 document (retaining view and entities) and measure
+whether the step savings survive without the constraint information.
 
 ## 6. Discussion
 
@@ -337,10 +474,14 @@ safety-sensitive settings where preventing illegal actions is itself valuable. C
 already shows the mechanism here: it uses fewer steps and keeps a near-zero
 illegal-action rate.
 
-The t10 result is a finding in its own right: a truthful `enabled` flag was
-present and ignored. That the document *told the truth* and the model *still acted
-against it* is precisely the kind of agent-experience signal a metric suite should
-capture, and it motivates the second paper.
+The t10 result (§5.3, "What the t10 failure means, plainly") is a finding in its
+own right: a truthful `enabled: false` flag was present and ignored. That the
+document *told the truth* — and agreed with the backend, an invariant we test —
+and the model *still acted against it* is precisely the kind of agent-experience
+signal a metric suite should capture. It also names a concrete, model-comparable
+quantity, the **ignored-affordance rate** (how often a model attempts an action
+the interface marked unavailable), which the second model run (§5.4) is designed
+to measure and which motivates the second paper.
 
 ## 7. Limitations
 
