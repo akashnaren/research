@@ -251,6 +251,83 @@ instrumented. It is expected to weight *round trips* (step count) differently fr
 token cost, and could therefore move the C3-vs-C4 comparison; we will add per-call
 timing and report median time-to-completion per condition.
 
+### Procedures
+
+This subsection states the exact, repeatable procedures behind the numbers. It
+does not re-derive the study design (Section 3) or the token accounting above; it
+records *how a run executes, how each metric is computed, how the data is
+analyzed, and how to reproduce all of it.*
+
+**Experimental procedure (one run).** A "run" is one (condition, task, repeat)
+triple. The harness holds everything in Section 3 fixed — the MiniShop backend
+and its execution grader, the ten-task set (seven success, three refusal),
+temperature 0, a step cap of 20, and a history limited to the task text, the
+prior actions, and the current observation — and varies only the representation
+across the four conditions screenshot (C1), accessibility tree (C2), flat tools
+(C3), and view document (C4). Within a run the agent loops: observe the current
+representation, emit one action, apply it against the backend, and observe again,
+until the task completes or the step cap is reached. A full sweep is the Cartesian
+product 4 conditions × 10 tasks × R repeats (here R = 5, so 200 runs); each
+condition is launched as its own repeats invocation so a crash in one condition
+cannot abort the others. A deterministic **oracle** agent that replays the correct
+policy is run first as a control and end-to-end pipeline check (it reaches 100% on
+C3 and C4), separating apparatus correctness from model behavior. Every run is
+written to its own JSONL trace file (a run header, one row per step with the
+action and provider usage, and a final result row with the per-run rollups), so
+runs are independent artifacts that the analysis layer reads after the fact.
+
+**Measurement procedure (per metric).** *Success* is the deterministic grader's
+verdict over the backend order record — for success tasks the order must match the
+task specification; for refusal tasks no forbidden order may be placed — never
+another model. *Input and output tokens* are the provider's reported usage summed
+over the run's steps; for the screenshot (C1), image tokens are read from total
+input tokens because Vertex folds them into `prompt_tokens` (Section 4). The
+per-condition observation cost is counted two different ways, as Section 4
+specifies: the text conditions (C2, C3, C4) are counted by tokenizer on the
+serialized observation, while the screenshot (C1) is counted by the
+resolution-driven image-tiling model. *Steps* is the number of model calls until
+success or the cap. *Illegal actions* are backend rejections; *malformed actions*
+are non-object model responses (a JSON array or prose) that are not a usable
+action. The two error signals are counted separately — a malformed response is
+recorded as such rather than silently coerced to a no-op — so that a model's
+formatting failures are never absorbed into its illegal-action rate.
+
+**Analysis procedure.** The analysis layer reads the final result row of every
+trace and collapses runs into per-`(model, condition)` cells, never pooling across
+models. For each cell it reports the success rate, median steps, median
+input/output/image tokens, and the illegal- and malformed-action rates per step.
+Uncertainty is a percentile bootstrap: the success rate and the median input
+tokens carry 95% CIs resampled (fixed seed) over the cell's task-repeat units. The
+cost–reliability frontier marks each cell as on- or off-frontier (a cell is
+dominated if another is no more costly and at least as reliable). Because the same
+tasks run under every condition, the C4-vs-C3 comparison is **paired per task**:
+average each task's outcome over its repeats under each condition, take the C4−C3
+difference, and bootstrap a 95% CI over tasks — reported separately for success
+and refusal tasks so a refusal passed by inaction cannot inflate the headline.
+
+**Reproducibility checklist.** Every number above is regenerated from the
+repository with no hidden state, in this order:
+
+1. `python -m harness.scripted` — the non-model sanity check; a scripted policy
+   must complete every success task on C3 and C4 and be refused on the refusal
+   tasks before any model is run.
+2. `python -m harness.obs_cost` — the model-free observation-cost baseline and the
+   per-condition token composition (Section 5.1), `o200k_base` tokenizer, no API
+   call.
+3. `python -m harness.model_loop --oracle --conditions C3,C4` — the deterministic
+   pipeline control (Section 5.2).
+4. `python -m harness.model_loop --repeats 5` (per condition) — the model sweep
+   that writes the 200 per-run traces (Section 5.3).
+5. `python -m harness.report --figures` — aggregates the traces into the tables,
+   bootstrap CIs, the paired comparison, and the Pareto/paired figures.
+6. `python paper/build.py` — renders this manuscript (`paper.md` →
+   `paper.html`/`paper.pdf`).
+
+The environment (Python dependencies, the Playwright Chromium used for the C1/C2
+browser render and for `paper/build.py`, and the model registry in
+`harness/models.py`) is pinned under `.cursor/`, so the sequence above runs
+identically on a fresh checkout.
+
 ## 5. Results
 
 We report the results in three layers, from the model-free lower bound to the
@@ -507,9 +584,9 @@ hand-authored upper bound established here.
 ## Appendix: reproducibility
 
 The application, four-condition harness, deterministic grader, model registry, and
-the tooling used for every number above (`harness.model_loop` with `--oracle` and
-`--repeats`, `harness.report`, `harness.obs_cost`, `harness.scripted`) are in the
-repository; the environment is defined in `.cursor/`. See
+the tooling used for every number above are in the repository; the exact command
+sequence is the reproducibility checklist in Section 4 ("Procedures"), and the
+environment is defined in `.cursor/`. See
 [`docs/research-plan.md`](../docs/research-plan.md) for the full methodology and
 [`docs/paper-outline.md`](../docs/paper-outline.md) for section status.
 
