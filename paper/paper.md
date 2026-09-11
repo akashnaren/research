@@ -21,11 +21,12 @@ catalog (C3), and a purpose-built JSON *view document* (C4) that names the
 current view and the actions valid within it. We measure task success, token
 cost, step count, and illegal actions, and report a cost–reliability frontier
 with paired per-task inference. On a first model, representations that reuse the
-human interface are clearly dominated: the screenshot costs roughly ten times the
-tokens of the cheapest representation and completes fewer than a third of tasks.
-Among the structured representations the trade-off is subtler and
-model-dependent: the view document reduces steps but, on this simple application
-and this model, does not yet justify its token overhead over a flat tool catalog.
+human interface are clearly dominated: the screenshot (C1) costs roughly ten
+times the tokens of the cheapest representation and completes fewer than a third
+of tasks. Among the structured representations the trade-off is subtler and
+model-dependent: the view document (C4) reduces steps but, on this simple
+application and this model, does not yet justify its token overhead over a flat
+tool catalog (C3).
 We frame these results as a measurement method and a first data point, and
 identify where the advantage of a purpose-built agent surface is expected to
 emerge.
@@ -53,10 +54,11 @@ authored for the agent can change how many tokens a task costs and how reliably
 it completes. To test this cleanly we hold everything else fixed — one
 application, one task set, one deterministic grader, one model at a time,
 temperature zero — and vary only the representation across four conditions
-(Section 3). Two of these reuse the human interface (screenshot, accessibility
-tree); one is the common flat tool catalog; and one is a purpose-built *view
-document* that states the current view, the entities in it, and the actions that
-are valid right now, with their argument constraints.
+(Section 3). Two of these reuse the human interface (screenshot (C1),
+accessibility tree (C2)); one is the common flat tool catalog (flat tools (C3));
+and one is a purpose-built *view document* (C4) that states the current view, the
+entities in it, and the actions that are valid right now, with their argument
+constraints.
 
 The applied motivation is the prospect that applications might one day expose an
 agent-facing surface alongside their human interface, much as they expose an API
@@ -78,7 +80,8 @@ are:
 **Reusing the human interface.** A large body of work drives applications through
 representations built for people: agents that act on the DOM or accessibility
 tree, and screenshot- or pixel-based computer-use agents and models. These
-correspond to our conditions C1 and C2. The relevant point for us is that they
+correspond to our screenshot (C1) and accessibility tree (C2) conditions. The
+relevant point for us is that they
 inherit a representation designed for human perception rather than for an agent's
 decision.
 
@@ -91,9 +94,9 @@ against a surface *authored from application state*.
 **Agent-facing protocols.** Emerging efforts propose structured surfaces for
 agents. These run in different directions from ours: some describe an agent
 generating a user interface for a human to view; capability-catalog protocols
-expose a flat list of tools and readable resources — close to our C3 — but do not
-define a per-view, stateful document with a-priori action validity, which is what
-our C4 adds. None is a de-facto standard.
+expose a flat list of tools and readable resources — close to our flat tools
+(C3) — but do not define a per-view, stateful document with a-priori action
+validity, which is what our view document (C4) adds. None is a de-facto standard.
 
 **Benchmarks.** Web and GUI agent benchmarks evaluate task success by *varying
 the agent or model while fixing the interface*. We do the opposite: we fix the
@@ -120,7 +123,8 @@ source of truth for grading.
 | C3 | Flat tools | Function catalog only; no current-view document | Call those functions |
 | C4 | View document | JSON: view, state, entities, affordances | Invoke an enabled affordance with typed arguments |
 
-C3 and C4 expose the **same operations at the same grain**. C3 gives the model a
+The flat tools (C3) and view document (C4) conditions expose the **same
+operations at the same grain**. C3 gives the model a
 flat catalog of functions (`open_product`, `set_size`, `add_to_cart`,
 `go_checkout`, `set_address`, `pay`, …) and, after each call, only a short status
 object; the model must track the application's state itself. C4 gives the same
@@ -146,7 +150,8 @@ artifact of a surface that disagrees with the application.
 
 **Dependent variables.** Per run: task success (binary; for refusal tasks,
 correctly declining); input and output tokens summed over steps (including image
-tokens on C1 where the provider itemizes them); step count; illegal actions
+tokens on the screenshot (C1) where the provider itemizes them); step count;
+illegal actions
 (backend rejections); and a `malformed_actions` count (responses that are not a
 usable action), tracked separately so that model formatting failures are not
 silently absorbed.
@@ -173,11 +178,11 @@ document), so its token count is exactly the length of that serialized content
 under the model's tokenizer (we use `o200k_base` for the deterministic
 baseline). Cost therefore scales with *how much content the representation
 serializes*. The per-step decomposition is the same fixed overhead as above plus
-the condition-specific part: **C3 additionally pays the full tool schema on
-every call** (the harness sends the function definitions with each request), and
-**C4 pays for the view document** (view, state, entities, and per-affordance
-`enabled` flags and argument schemas). C2 pays for the verbose human
-accessibility tree. Reconstructing the canonical path deterministically, the
+the condition-specific part: **flat tools (C3) additionally pays the full tool
+schema on every call** (the harness sends the function definitions with each
+request), and **the view document (C4) pays for that document** (view, state,
+entities, and per-affordance `enabled` flags and argument schemas). The
+accessibility tree (C2) pays for the verbose human accessibility tree. Reconstructing the canonical path deterministically, the
 median per-step input splits (o200k_base) are:
 
 | condition | system | task+prior | tool schema | observation | per-step total |
@@ -317,11 +322,12 @@ savings survive without the constraint information.
 ## 6. Discussion
 
 The provisional headline — that on the simplest application, with a model that
-ignores constraints, a flat tool catalog is preferred to the view document on
-tokens and success — should be read carefully. It is the *least favorable* setting
-for a purpose-built surface: the application's state is tiny and the tasks are
-short, so the burden C3 places on the model (tracking state itself) is light,
-while C4 pays a per-step cost to send a document the model barely needs.
+ignores constraints, a flat tool catalog (C3) is preferred to the view document
+(C4) on tokens and success — should be read carefully. It is the *least
+favorable* setting for a purpose-built surface: the application's state is tiny
+and the tasks are short, so the burden C3 places on the model (tracking state
+itself) is light, while C4 pays a per-step cost to send a document the model
+barely needs.
 
 We therefore expect a crossover as conditions become less favorable to C3: with
 more complex applications (more views, more state, more opportunities for invalid
@@ -341,8 +347,9 @@ capture, and it motivates the second paper.
 This is one model on one small, synthetic application with a ten-task set;
 statistical power is limited and the results are provisional. The C4 document is
 hand-authored (an upper bound, not an automatically generated surface). Image
-tokens are provider-dependent and here are folded into prompt tokens, so C1 cost
-is read from total input tokens. Latency is not yet measured. Refusal tasks can be
+tokens are provider-dependent and here are folded into prompt tokens, so the
+screenshot (C1) cost is read from total input tokens. Latency is not yet
+measured. Refusal tasks can be
 passed by inaction and are reported separately. Temperature-zero decoding is not
 fully deterministic, which is why results are averaged over repeats.
 

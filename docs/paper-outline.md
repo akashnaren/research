@@ -29,7 +29,9 @@ latency numbers are in.
 
 ## 1. Introduction — [TODO, source material HAVE]
 - The agent loop (observe → decide → act); every observation is input tokens.
-- The interface is a control variable, not a fixed cost of automation.
+- The interface is a control variable, not a fixed cost of automation. The four
+  conditions are screenshot (C1), accessibility tree (C2), flat tools (C3), and
+  view document (C4).
 - The applied motivation (apps may ship an agent surface as they ship an API),
   stated as motivation, not as the contribution.
 - Contributions: (i) a controlled measurement method for interface
@@ -100,9 +102,11 @@ to separate *compactness* from *constraint-carrying*, and to explain C4's token
 overhead.
 
 ## 6. Discussion — [PROVISIONAL]
-- On the simplest app with a model that ignores constraints, the view document's
-  overhead is not yet worth it; flat tools are Pareto-preferred on tokens/success.
-- Why this is the least favorable setting for C4 (small state, short tasks) and
+- On the simplest app with a model that ignores constraints, the view document
+  (C4) overhead is not yet worth it; flat tools (C3) are Pareto-preferred on
+  tokens/success.
+- Why this is the least favorable setting for the view document (C4) (small
+  state, short tasks) and
   where the crossover is hypothesized (complex apps; constraint-respecting models;
   latency-weighted cost; safety-sensitive settings where illegal actions matter).
 - The "advisory affordance" finding: a truthful `enabled` flag was ignored — a

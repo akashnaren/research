@@ -52,7 +52,8 @@ the interface. The four interface conditions are defined in `PROTOCOL.md`:
 | C3 | Flat tools | Function schemas only; no current-view document | Call those functions |
 | C4 | View document | JSON for the current view | Invoke an enabled action with typed arguments |
 
-C3 and C4 expose the **same operations at the same grain**. This is essential:
+The flat tools (C3) and view document (C4) conditions expose the **same
+operations at the same grain**. This is essential:
 it means any difference between C3 and C4 is attributable to the *view
 document* (current-view identity, enabled/disabled flags, argument
 constraints), not to a different action vocabulary.
@@ -63,16 +64,17 @@ constraints), not to a different action vocabulary.
   step count, task success, and rate of illegal actions, on a fixed task set?
 - **RQ2.** Is there a representation that is *Pareto-superior* — no more costly
   and at least as reliable — to reusing the human interface? Specifically, does
-  the view document (C4) dominate the screenshot (C1) and the tree (C2)?
+  the view document (C4) dominate the screenshot (C1) and the accessibility tree
+  (C2)?
 - **RQ3.** Is the effect model-agnostic? Does the ranking of conditions hold
   across several general models, or is it an artifact of one model?
 
 ### Hypotheses
 
 - **H1.** Cost and reliability differ significantly across conditions.
-- **H2.** C4 lies on the cost–reliability efficient frontier; C1 in particular
-  is dominated because image observations are expensive and grounding is
-  error-prone.
+- **H2.** The view document (C4) lies on the cost–reliability efficient
+  frontier; the screenshot (C1) in particular is dominated because image
+  observations are expensive and grounding is error-prone.
 - **H3.** The *ordering* of conditions is stable across general models even if
   the *magnitude* of the gap is not. (`PROTOCOL.md`: the mechanism is assumed
   general; the effect size is not assumed constant.)
@@ -99,12 +101,14 @@ input_tokens(run) ≈ per_step_observation_cost(condition) × steps
 
 This yields the two levers the study measures:
 
-1. **Per-step observation cost.** C1 pays image tokens (large, and only
-   sometimes itemized by the provider). C2 pays for a verbose tree. C3 pays
-   almost nothing per step (short status objects) but carries no view. C4 pays
-   for a compact, task-relevant document.
-2. **Step count.** A representation that hides state (C3) or is hard to ground
-   (C1) can cause extra steps, retries, and illegal actions, each of which adds
+1. **Per-step observation cost.** The screenshot (C1) pays image tokens (large,
+   and only sometimes itemized by the provider). The accessibility tree (C2)
+   pays for a verbose tree. Flat tools (C3) pays
+   almost nothing per step (short status objects) but carries no view. The view
+   document (C4) pays for a compact, task-relevant document.
+2. **Step count.** A representation that hides state (flat tools (C3)) or is
+   hard to ground (the screenshot (C1)) can cause extra steps, retries, and
+   illegal actions, each of which adds
    another full observation to the context. Fewer, better-informed steps can
    make a slightly more expensive per-step representation cheaper overall.
 
