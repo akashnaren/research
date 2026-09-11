@@ -1,28 +1,36 @@
-# Agent surface interfaces
+# Research
 
-Pilot study: four ways of presenting the same store to a language model, measuring tokens, steps, success, and illegal actions.
+Personal research repository. Each paper has a folder under `papers/`.
+Experiment code for Paper 1 (MiniShop and its harness) stays at the top level
+under `dualsurface/minishop/`, not inside the paper folder.
 
-See [PROTOCOL.md](PROTOCOL.md) for the frozen experimental design.
+## Papers
 
-## Model policy
+| Paper | Path | Status |
+| --- | --- | --- |
+| 1. Agent-native UI (MiniShop C1-C4) | [`papers/agent-native-ui/`](papers/agent-native-ui/) | Working draft plus frozen protocol and first results |
+| 2. ARC-AGI-1 hallucination | [`papers/arc-agi-1-hallucination/`](papers/arc-agi-1-hallucination/) | Planned stub. Empty. |
+| 3. Gap-aware entity resolution | [`papers/gap-aware-entity-resolution/`](papers/gap-aware-entity-resolution/) | Planned stub. Empty. |
 
-Main experiments use general, accessible models (default `gpt-4o-mini`; reported table `gpt-4o`) that support vision and structured output in one API. Specialized computer-use models are reserved for a final comparison.
+Paper 1 draft: [`papers/agent-native-ui/paper.md`](papers/agent-native-ui/paper.md).
+Protocol: [`papers/agent-native-ui/PROTOCOL.md`](papers/agent-native-ui/PROTOCOL.md).
+Notes: [`papers/agent-native-ui/RESEARCH_NOTES.md`](papers/agent-native-ui/RESEARCH_NOTES.md).
+Web ingest export (Profile Engineer, GitHub Pages): [`papers/agent-native-ui/web/article.md`](papers/agent-native-ui/web/article.md).
+Do not open PRs on `akashnaren.github.io` from this repo.
 
-## MiniShop
+## MiniShop (Paper 1 experiment)
 
 ```bash
 cd dualsurface/minishop
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn minishop.server:app --reload --port 8765
-```
-
-```bash
 python -m harness.scripted
 pytest -q
 ```
 
-C1/C2 need Playwright Chromium and a running server. The model loop writes JSONL traces to `dualsurface/minishop/traces/` (gitignored):
+C1/C2 need Playwright Chromium and a running server. The model loop writes JSONL
+traces to `dualsurface/minishop/traces/` (gitignored):
 
 ```bash
 playwright install chromium
@@ -30,12 +38,16 @@ python -m harness.model_loop --conditions C3,C4
 python -m harness.model_loop --conditions C1,C2,C3,C4
 ```
 
-Copy `dualsurface/minishop/.env.example` to `.env` for `OPENAI_API_KEY`. Never commit secrets. Use one general model for all conditions (`MODEL=gpt-4o-mini` by default; `gpt-4o` for the reported table).
+Copy `dualsurface/minishop/.env.example` to `.env` for `OPENAI_API_KEY`.
+Never commit secrets. Use one general model for all conditions
+(`MODEL=gpt-4o-mini` by default; `gpt-4o` for a reported OpenAI table). The
+numbers in the Paper 1 draft are `gemini-2.5-flash` via Vertex.
 
-To source additional general models from GCP Vertex AI Model Garden (mid-tier Gemini, Claude Sonnet
-without a computer-use tool, Grok, and optional stronger variants), authenticate with
-`gcloud auth application-default login`, set `GOOGLE_CLOUD_PROJECT`/`VERTEX_LOCATION` in `.env`, and
-use `--models` with an alias list or sweep name instead of `--model`:
+To source additional general models from GCP Vertex AI Model Garden (mid-tier
+Gemini, Claude Sonnet without a computer-use tool, Grok, and optional stronger
+variants), authenticate with `gcloud auth application-default login`, set
+`GOOGLE_CLOUD_PROJECT`/`VERTEX_LOCATION` in `.env`, and use `--models` with an
+alias list or sweep name instead of `--model`:
 
 ```bash
 python -m harness.model_loop --models gemini-flash,sonnet,grok-fast --conditions C3,C4
@@ -44,5 +56,14 @@ python -m harness.model_loop --models better # sweep: gemini-pro, sonnet-5, grok
 python -m harness.model_loop --models gcp    # all six Vertex aliases
 ```
 
-See `harness/models.py` for the model registry and `dualsurface/minishop/README.md` for details.
-`--model` (OpenAI) remains the default fallback path and is unaffected.
+See `dualsurface/minishop/harness/models.py` and
+`dualsurface/minishop/README.md`. `--model` (OpenAI) remains the default
+fallback path.
+
+Render the Paper 1 manuscript (HTML, PDF, and `web/article.md`):
+
+```bash
+python papers/agent-native-ui/build.py
+```
+
+Needs the MiniShop venv (Playwright Chromium plus the `markdown` package).

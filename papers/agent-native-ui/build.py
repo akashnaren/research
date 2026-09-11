@@ -1,12 +1,15 @@
-"""Render paper.md into a readable, formatted paper.html and paper.pdf.
+"""Render paper.md into paper.html, paper.pdf, and web/article.md.
 
 Markdown is the editable source; this produces the human-readable outputs.
 HTML is generated with the `markdown` package; the PDF is printed from that
 HTML using the Playwright Chromium already installed for the C1/C2 conditions,
 so no LaTeX/pandoc toolchain is required.
 
+`web/article.md` is the ingest export for Profile Engineer
+(https://akashnaren.github.io/research/). Do not open PRs on that site from here.
+
 Usage (from repo root, with the venv active):
-    python paper/build.py
+    python papers/agent-native-ui/build.py
 """
 
 from __future__ import annotations
@@ -19,6 +22,22 @@ HERE = Path(__file__).resolve().parent
 SRC = HERE / "paper.md"
 HTML_OUT = HERE / "paper.html"
 PDF_OUT = HERE / "paper.pdf"
+ARTICLE_OUT = HERE / "web" / "article.md"
+
+ARTICLE_FRONTMATTER = """---
+title: The Interface Is a Variable
+subtitle: Measuring the cost and reliability of purpose-built UI representations for LLM agents
+status: working-draft
+canonical_source: papers/agent-native-ui/paper.md
+ingest_for: https://akashnaren.github.io/research/
+site_owner: Profile Engineer owns the GitHub Pages site. Do not open PRs on akashnaren.github.io from this repository.
+---
+
+# The Interface Is a Variable
+
+*Working draft for a later Medium-like reader on https://akashnaren.github.io/research/. The scholarly source of truth is [`paper.md`](../paper.md). Numbers below are one model (`gemini-2.5-flash`) on one synthetic store. They are provisional.*
+
+"""
 
 CSS = """
 @page { size: A4; margin: 22mm 20mm; }
@@ -61,7 +80,31 @@ def build_html() -> str:
     )
 
 
+def export_article() -> None:
+    """Write a GitHub Pages ingest copy. Profile Engineer owns the live site."""
+    body = SRC.read_text()
+    if body.startswith("# "):
+        body = body.split("\n", 1)[1]
+    lines = body.lstrip().splitlines()
+    if lines and lines[0].startswith("*Working draft"):
+        lines = lines[1:]
+        if lines and lines[0].strip() == "":
+            lines = lines[1:]
+    body = "\n".join(lines)
+    for src, dst in (
+        ("](paper-outline.md)", "](../paper-outline.md)"),
+        ("](research-plan.md)", "](../research-plan.md)"),
+        ("](PROTOCOL.md)", "](../PROTOCOL.md)"),
+        ("](web/article.md)", "](article.md)"),
+    ):
+        body = body.replace(src, dst)
+    ARTICLE_OUT.parent.mkdir(parents=True, exist_ok=True)
+    ARTICLE_OUT.write_text(ARTICLE_FRONTMATTER + body)
+    print(f"wrote {ARTICLE_OUT}")
+
+
 def main() -> None:
+    export_article()
     html = build_html()
     HTML_OUT.write_text(html)
     print(f"wrote {HTML_OUT}")

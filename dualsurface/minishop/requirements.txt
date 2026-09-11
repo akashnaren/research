@@ -11,3 +11,4 @@ google-auth>=2.30.0
 matplotlib>=3.9.0
 tiktoken>=0.8.0
 tiktoken>=0.7.0
+markdown>=3.7.0

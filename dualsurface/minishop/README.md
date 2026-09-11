@@ -2,7 +2,7 @@
 
 Pilot study: four ways of presenting the same store to a language model, measuring tokens, steps, success, and illegal actions.
 
-See [PROTOCOL.md](PROTOCOL.md) for the frozen experimental design.
+See [PROTOCOL.md](../../papers/agent-native-ui/PROTOCOL.md) for the frozen experimental design.
 
 ## Model policy
 
@@ -88,4 +88,4 @@ python -m harness.report --traces traces --out report --figures  # also pareto.p
 python -m harness.obs_cost --out report   # per-task + per-condition table, writes report/obs_cost.csv
 ```
 
-See [`docs/research-plan.md`](../../docs/research-plan.md) for the metrics, the token accounting, the plots, and the ordered experimental steps.
+See [`papers/agent-native-ui/research-plan.md`](../../papers/agent-native-ui/research-plan.md) for the metrics, the token accounting, the plots, and the ordered experimental steps.

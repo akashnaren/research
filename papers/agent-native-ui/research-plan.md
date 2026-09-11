@@ -1,7 +1,7 @@
 # Research plan: agent-facing interfaces and their cost
 
 This document is the paper-oriented roadmap for the first study. It builds on
-[`PROTOCOL.md`](../PROTOCOL.md), which is the frozen experimental design.
+[`PROTOCOL.md`](PROTOCOL.md), which is the frozen experimental design.
 Where the two overlap, `PROTOCOL.md` governs the experiment and this document
 governs the write-up, the analysis, and the order of work. Nothing here
 weakens a constraint in `PROTOCOL.md`.
