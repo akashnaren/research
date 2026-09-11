@@ -1,7 +1,7 @@
 """Deterministic, model-free observation-cost baseline for C1-C4.
 
 This measures the *observation* half of the input-token cost equation from
-`docs/research-plan.md`:
+`papers/agent-native-ui/research-plan.md`:
 
     input_tokens(run) ~= per_step_observation_cost(condition) * steps + overhead
 

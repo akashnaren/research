@@ -8,7 +8,7 @@ one action per ``chat()`` call. Its purpose is a *control condition* -- a
 perfect agent -- and an end-to-end validation of the measurement apparatus
 (loop -> HTTP -> traces -> report) before any paid model run.
 
-Honesty notes (see also ``docs/research-plan.md``):
+Honesty notes (see also ``papers/agent-native-ui/research-plan.md``):
 
 - The reported ``usage`` is **real but locally computed**, not provider usage.
   ``prompt_tokens`` is counted with ``tiktoken`` (``o200k_base``, the same
