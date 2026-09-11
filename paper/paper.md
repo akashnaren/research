@@ -15,12 +15,13 @@ were designed for people: screenshots, accessibility trees, and document object
 models. We ask whether the interface *representation* — how an application
 presents its state and available actions to an agent — is better understood as a
 control variable than as a fixed cost of automation. Holding the application, the
-task set, and an execution-based grader constant, we compare four representations
+task set, and an execution-based grader (a deterministic checker over backend
+state, never a model judge) constant, we compare four representations
 of the same store: a screenshot (C1), an accessibility tree (C2), a flat tool
 catalog (C3), and a purpose-built JSON *view document* (C4) that names the
 current view and the actions valid within it. We measure task success, token
-cost, step count, and illegal actions, and report a cost–reliability frontier
-with paired per-task inference. On a first model, representations that reuse the
+cost, step count, and illegal actions (actions the backend rejects), and report a
+cost–reliability frontier with paired per-task inference. On a first model, representations that reuse the
 human interface are clearly dominated: the screenshot (C1) costs roughly ten
 times the tokens of the cheapest representation and completes fewer than a third
 of tasks. Among the structured representations the trade-off is subtler and
@@ -68,8 +69,10 @@ are:
 1. A controlled method for measuring interface representations for agents at
    **matched action grain**, so that differences are attributable to the
    representation rather than to a different set of operations (Section 4).
-2. A **cost–reliability (Pareto)** framing with paired per-task inference, rather
-   than a success-only leaderboard (Section 5).
+2. A **cost–reliability (Pareto)** framing — a representation is preferred only
+   when nothing else is both cheaper and at least as reliable — with **paired
+   per-task inference** (comparing conditions task-by-task with bootstrap
+   confidence intervals), rather than a success-only leaderboard (Section 5).
 3. First evidence on one application and model, including a **model-free
    observation-cost baseline** and an execution-based grader, showing that
    human-surface representations are dominated while the structured
