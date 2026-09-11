@@ -1083,11 +1083,12 @@ and the tooling used for every number above are in the repository; the exact
 command sequence is the reproducibility checklist in Section 5 ("Procedures"),
 and the environment is defined in `.cursor/`. See
 [`research-plan.md`](research-plan.md) for the full methodology and
-[`paper-outline.md`](paper-outline.md) for section status. A web ingest export
-for Profile Engineer is [`web/article.md`](web/article.md)
-(https://akashnaren.github.io/research/; do not open PRs on that site from here).
+[`paper-outline.md`](paper-outline.md) for section status. Profile Engineer
+ingests the exact PDF [`paper.pdf`](paper.pdf) for
+https://akashnaren.github.io/research/ (do not open PRs on that site from here;
+the bare reader is Profile’s job).
 `python papers/agent-native-ui/build.py` rebuilds `paper.html` and `paper.pdf`
-only. It does not overwrite `web/article.md`.
+from this file.
 
 ## References
 

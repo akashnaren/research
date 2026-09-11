@@ -4,9 +4,10 @@ Markdown is the editable source for the scholarly manuscript.
 HTML is generated with the `markdown` package; the PDF is printed from that
 HTML using the Playwright Chromium already installed for the C1/C2 conditions.
 
-`web/article.md` is the Medium-like reader export, maintained separately for
-Profile Engineer (https://akashnaren.github.io/research/). This script does
-not overwrite it. Do not open PRs on that site from here.
+Profile Engineer ingest source is `paper.pdf` (exact PDF) for
+https://akashnaren.github.io/research/. This script rebuilds HTML and PDF
+from `paper.md`. It does not write a site reader. Do not open PRs on that
+site from here.
 
 Usage (from repo root, with the venv active):
     python papers/agent-native-ui/build.py

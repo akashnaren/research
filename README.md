@@ -15,8 +15,8 @@ under `dualsurface/minishop/`, not inside the paper folder.
 Paper 1 draft: [`papers/agent-native-ui/paper.md`](papers/agent-native-ui/paper.md).
 Protocol: [`papers/agent-native-ui/PROTOCOL.md`](papers/agent-native-ui/PROTOCOL.md).
 Notes: [`papers/agent-native-ui/RESEARCH_NOTES.md`](papers/agent-native-ui/RESEARCH_NOTES.md).
-Web ingest export (Profile Engineer, GitHub Pages): [`papers/agent-native-ui/web/article.md`](papers/agent-native-ui/web/article.md).
-Do not open PRs on `akashnaren.github.io` from this repo.
+Profile ingest (exact PDF): [`papers/agent-native-ui/paper.pdf`](papers/agent-native-ui/paper.pdf).
+Do not open PRs on `akashnaren.github.io` from this repo. The site reader is Profile’s job.
 
 ## MiniShop (Paper 1 experiment)
 
@@ -60,7 +60,7 @@ See `dualsurface/minishop/harness/models.py` and
 `dualsurface/minishop/README.md`. `--model` (OpenAI) remains the default
 fallback path.
 
-Render the Paper 1 manuscript (HTML, PDF, and `web/article.md`):
+Render the Paper 1 manuscript (HTML and PDF):
 
 ```bash
 python papers/agent-native-ui/build.py

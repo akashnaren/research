@@ -75,7 +75,7 @@ expensive multi-model sweeps in the current unit.
 **Auto-advance (no new model spend)**
 
 - Keep Paper 1 prose scholarly and readable. Ban dash punctuation in prose.
-- Keep `web/article.md` in sync with `paper.md` via `build.py`.
+- Keep `paper.pdf` current via `build.py` when the manuscript changes.
 - Harness tests, scripted 20/20, surface-consistency, report unit tests.
 - Implement the C4 ablation *flag* once PROTOCOL is updated (the paid run
   still needs Akash).
@@ -83,7 +83,7 @@ expensive multi-model sweeps in the current unit.
 
 ## Web export
 
-Profile ingest path: `papers/agent-native-ui/web/article.md` (Medium-like
-reader: title, dek, byline placeholder, figure paths). Scholarly source:
-`paper.md`. `build.py` rebuilds HTML/PDF and does not overwrite `article.md`.
-Do not open PRs on `akashnaren.github.io`.
+Profile ingest path: `papers/agent-native-ui/paper.pdf` (exact PDF).
+Editable source: `paper.md`. `build.py` rebuilds `paper.html` and `paper.pdf`.
+`web/article.md` is a pointer only. Do not ingest it. The github.io reader is
+Profile Engineer’s job. Do not open PRs on `akashnaren.github.io`.

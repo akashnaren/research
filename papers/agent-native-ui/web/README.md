@@ -1,19 +1,19 @@
-# Web export (Paper 1)
+# Web ingest (Paper 1)
 
-Profile Engineer renders [`article.md`](article.md) on
-https://akashnaren.github.io/research/.
+Profile Engineer ingest source of truth is the exact PDF:
 
-This file is the Medium-like reader export (title, dek, byline placeholder,
-sections, figure paths). The scholarly source of truth is
-[`../paper.md`](../paper.md).
+[`../paper.pdf`](../paper.pdf)
 
-Do not open pull requests on `akashnaren.github.io` from this repository.
-Profile owns that site.
+Path: `papers/agent-native-ui/paper.pdf`
 
-HTML and PDF of the manuscript are built separately:
+The github.io reader (https://akashnaren.github.io/research/) is a bare
+reader of that PDF. Profile owns that site. Do not open pull requests on
+`akashnaren.github.io` from this repository.
+
+Editable scholarly source: [`../paper.md`](../paper.md). Rebuild HTML and PDF:
 
 ```bash
 python papers/agent-native-ui/build.py
 ```
 
-That command does not overwrite `article.md`.
+[`article.md`](article.md) is a pointer only. Do not ingest it as the paper.
