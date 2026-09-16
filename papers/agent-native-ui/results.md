@@ -4,6 +4,11 @@ Pointers only. Numbers in `paper.md` Section 6 are from the
 `gemini-2.5-flash` N=5 sweep already recorded in `research-plan.md`. This file
 does not add results.
 
+Model-free follow-ups with their own recorded numbers:
+
+- [`results-catalog-obs-cost.md`](results-catalog-obs-cost.md): catalog-size
+  observation-cost sweep (8/50/500/5000 products; C4 overtakes C3 at 13).
+
 ## Generated (gitignored; regenerate locally)
 
 From `dualsurface/minishop/`:

@@ -43,8 +43,11 @@ from fastapi.testclient import TestClient
 
 from harness.prompts import system_prompt
 from harness.scripted import POLICIES
-from minishop.catalog import load_tasks
+from minishop.actions import IllegalAction, apply_action
+from minishop.catalog import compact_products, load_catalog, load_tasks
 from minishop.server import app
+from minishop.state import Store
+from minishop.surface import build_surface
 from minishop.tools import tool_schemas
 
 VIEWPORT = (1280, 800)
@@ -444,6 +447,214 @@ def write_composition_csv(rows: list[StepComposition], path: str | Path) -> None
             )
 
 
+# ---------------------------------------------------------------------------
+# Catalog-size sweep (model-free)
+#
+# The 8-product baseline above answers "how heavy is one look on MiniShop".
+# This section answers "how does that weight scale with the catalog": the same
+# canonical paths are replayed in memory against the real catalog padded with
+# synthetic products, and the observation tokens are re-counted at each size.
+#
+# Honesty notes (mirroring paper Section 7.1's scale discussion):
+# - The real products are kept, byte for byte, and synthetic ones are appended,
+#   so the frozen tasks and scripted policies replay unchanged at every size.
+# - C4 grows on every step: the document embeds the whole catalog on the
+#   catalog view and an enum of every product id in `open_product`'s input
+#   schema on every view.
+# - C3's canonical path never calls `list_products` (the shared paths are the
+#   C4-legal minimal paths), so its number stays schema + tiny status replies
+#   and is catalog-independent. A real flat-tools run pays the `list_products`
+#   response at least once per task; that payload is reported as context.
+# - C1's image estimate depends on resolution/detail, not page content, so it
+#   is constant across catalog sizes by construction.
+# - C2 needs a rendered page and stays out of this deterministic path.
+# - Zero model / API calls: everything is local functions plus a tokenizer.
+# ---------------------------------------------------------------------------
+
+DEFAULT_CATALOG_SWEEP: tuple[int, ...] = (8, 50, 500, 5000)
+
+
+def synthetic_catalog(n: int) -> list[dict[str, Any]]:
+    """The real catalog padded with synthetic products to exactly ``n`` entries.
+
+    The first ``len(real)`` entries are the real catalog unchanged, so every
+    frozen task and scripted policy replays identically. Padding entries copy
+    the real field shape (id, name, price, sizes, stock) at a similar name
+    length, so token counts scale the way a plausibly larger catalog would.
+    """
+    base = load_catalog()
+    if n < len(base):
+        raise ValueError(f"catalog size {n} is smaller than the real catalog ({len(base)})")
+    pad = [
+        {
+            "id": f"pad-{i:04d}",
+            "name": f"Padded Item {i:04d}",
+            "price": 19,
+            "sizes": ["S", "M", "L"],
+            "stock": {"S": 5, "M": 5, "L": 5},
+        }
+        for i in range(n - len(base))
+    ]
+    return base + pad
+
+
+def list_products_tokens(enc, catalog: list[dict[str, Any]]) -> int:
+    """Tokens of the one-time C3 ``list_products`` payload at this catalog size.
+
+    Matches the server's payload shape exactly. Context only: the canonical
+    paths never call it, but a real flat-tools run does, at least once.
+    """
+    return count_tokens(enc, {"status": "ok", "products": compact_products(catalog)})
+
+
+@dataclass(frozen=True)
+class CatalogTaskCost:
+    catalog_n: int
+    task_id: str
+    expect: str
+    steps: int
+    c1_obs_tokens: int  # estimate; per-step constant across catalog sizes
+    c3_obs_tokens: int  # tool schema + status replies, exact, in-memory replay
+    c4_obs_tokens: int  # view documents, exact, in-memory replay
+
+
+def _replay_task_at_catalog(
+    enc, catalog: list[dict[str, Any]], task: dict[str, Any], tools_tokens: int
+) -> CatalogTaskCost:
+    """Replay one task's canonical path in memory against ``catalog``.
+
+    Mirrors :func:`measure_task` exactly but calls ``build_surface`` and
+    ``apply_action`` directly instead of going through the HTTP layer. Both
+    ``/agent/surface`` and ``/agent/act`` return those functions' output
+    unmodified, so at the real catalog size the counts are identical to the
+    HTTP baseline (pinned by a test).
+    """
+    policy = POLICIES[task["id"]]
+    image_per_step = image_tokens_high_detail(*VIEWPORT)
+
+    store4 = Store(catalog)
+    sid4 = store4.new_session()
+    c4 = 0
+    for name, arguments in policy:
+        c4 += count_tokens(enc, build_surface(store4.get(sid4), catalog))
+        try:
+            apply_action(store4, catalog, sid4, name, arguments, enforce_surface=True)
+        except IllegalAction:
+            break
+
+    store3 = Store(catalog)
+    sid3 = store3.new_session()
+    c3 = 0
+    steps = 0
+    prev_payload: Any = {"status": "start"}
+    for name, arguments in policy:
+        c3 += tools_tokens + count_tokens(enc, prev_payload)
+        steps += 1
+        try:
+            prev_payload = apply_action(store3, catalog, sid3, name, arguments, enforce_surface=False)
+        except IllegalAction as exc:
+            prev_payload = {"illegal": True, "error": exc.message}
+            break
+
+    return CatalogTaskCost(
+        catalog_n=len(catalog),
+        task_id=task["id"],
+        expect=task.get("expect", "success"),
+        steps=steps,
+        c1_obs_tokens=image_per_step * steps,
+        c3_obs_tokens=c3,
+        c4_obs_tokens=c4,
+    )
+
+
+def measure_catalog_sweep(sizes: tuple[int, ...] | list[int] = DEFAULT_CATALOG_SWEEP) -> list[CatalogTaskCost]:
+    enc = _encoder()
+    tools_tokens = count_tokens(enc, tool_schemas())
+    tasks = load_tasks()
+    rows: list[CatalogTaskCost] = []
+    for n in sizes:
+        catalog = synthetic_catalog(n)
+        rows.extend(_replay_task_at_catalog(enc, catalog, task, tools_tokens) for task in tasks)
+    return rows
+
+
+def summarize_catalog_sweep(
+    rows: list[CatalogTaskCost], *, only_success: bool = True
+) -> dict[int, dict[str, float]]:
+    """Per catalog size: median observation tokens per step, per condition.
+
+    Same statistic as :func:`summarize` (median over tasks of each task's
+    per-step average), so the 8-product row reproduces the existing baseline.
+    """
+    out: dict[int, dict[str, float]] = {}
+    for n in sorted({r.catalog_n for r in rows}):
+        n_rows = [r for r in rows if r.catalog_n == n and (r.expect == "success" or not only_success)]
+        out[n] = {
+            "C1(est)": statistics.median(r.c1_obs_tokens / r.steps for r in n_rows),
+            "C3": statistics.median(r.c3_obs_tokens / r.steps for r in n_rows),
+            "C4": statistics.median(r.c4_obs_tokens / r.steps for r in n_rows),
+        }
+    return out
+
+
+def catalog_sweep_markdown(summary: dict[int, dict[str, float]], list_products: dict[int, int]) -> str:
+    lines = [
+        "| catalog products | C1(est) obs/step | C3 obs/step | C4 obs/step | C3 one-time list_products payload |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for n, m in summary.items():
+        lines.append(
+            f"| {n} | {m['C1(est)']:.0f} | {m['C3']:.0f} | {m['C4']:.0f} | {list_products[n]} |"
+        )
+    return "\n".join(lines)
+
+
+def find_c4_over_c3_crossover(lo: int = 8, hi: int = 5000) -> int | None:
+    """Smallest catalog size in [lo, hi] where C4's median obs/step exceeds C3's.
+
+    Valid because C4's per-step cost grows monotonically with the catalog (the
+    product-id enum is in every document) while C3's canonical-path cost does
+    not depend on the catalog at all. Returns None if C4 never overtakes C3
+    within the range.
+    """
+    enc = _encoder()
+    tools_tokens = count_tokens(enc, tool_schemas())
+    tasks = load_tasks()
+
+    def c4_minus_c3(n: int) -> float:
+        catalog = synthetic_catalog(n)
+        rows = [_replay_task_at_catalog(enc, catalog, task, tools_tokens) for task in tasks]
+        m = summarize_catalog_sweep(rows)[n]
+        return m["C4"] - m["C3"]
+
+    if c4_minus_c3(lo) > 0:
+        return lo
+    if c4_minus_c3(hi) <= 0:
+        return None
+    low, high = lo, hi
+    while high - low > 1:
+        mid = (low + high) // 2
+        if c4_minus_c3(mid) > 0:
+            high = mid
+        else:
+            low = mid
+    return high
+
+
+def write_catalog_sweep_csv(rows: list[CatalogTaskCost], path: str | Path) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(
+            ["catalog_n", "task_id", "expect", "steps", "c1_est_obs_tokens", "c3_obs_tokens", "c4_obs_tokens"]
+        )
+        for r in rows:
+            writer.writerow(
+                [r.catalog_n, r.task_id, r.expect, r.steps, r.c1_obs_tokens, r.c3_obs_tokens, r.c4_obs_tokens]
+            )
+
+
 def summarize(costs: list[TaskCost], *, only_success: bool = True) -> dict[str, dict[str, float]]:
     rows = [c for c in costs if (c.expect == "success" or not only_success)]
     out: dict[str, dict[str, float]] = {}
@@ -483,7 +694,40 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Deterministic observation-cost baseline (no model)")
     parser.add_argument("--out", default="report", help="Output directory for the CSV")
     parser.add_argument("--all-tasks", action="store_true", help="Include refusal tasks in the summary")
+    parser.add_argument(
+        "--catalog-sweep",
+        default=None,
+        help=(
+            "Comma-separated synthetic catalog sizes (e.g. 8,50,500,5000). Runs the "
+            "model-free catalog-size sweep plus the C4-vs-C3 crossover search, "
+            "writes obs_cost_catalog_sweep.csv, and exits. Zero model calls."
+        ),
+    )
     args = parser.parse_args(argv)
+
+    if args.catalog_sweep:
+        sizes = tuple(int(s) for s in args.catalog_sweep.split(",") if s.strip())
+        out = Path(args.out)
+        rows = measure_catalog_sweep(sizes)
+        write_catalog_sweep_csv(rows, out / "obs_cost_catalog_sweep.csv")
+        enc = _encoder()
+        lp = {n: list_products_tokens(enc, synthetic_catalog(n)) for n in sizes}
+        sweep_summary = summarize_catalog_sweep(rows)
+        print("Observation tokens per step vs catalog size (success tasks, canonical path):")
+        print(catalog_sweep_markdown(sweep_summary, lp))
+        crossover = find_c4_over_c3_crossover(min(sizes), max(sizes))
+        if crossover is None:
+            print(f"\nC4 does not overtake C3 within {min(sizes)}..{max(sizes)} products.")
+        else:
+            print(f"\nC4's median obs/step overtakes C3's at a catalog of {crossover} products.")
+        print(
+            "Notes: in-memory replay of the canonical paths; C3 = schema + status "
+            "replies (its canonical path never calls list_products; the one-time "
+            "payload column is context); C1 estimate is resolution-driven and "
+            "catalog-independent; C2 needs a browser. No model API calls."
+        )
+        print(f"Wrote {out / 'obs_cost_catalog_sweep.csv'}")
+        return
 
     costs = measure_all()
     summary = summarize(costs, only_success=not args.all_tasks)

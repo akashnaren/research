@@ -1,20 +1,28 @@
 from __future__ import annotations
 
+import pytest
+
 from harness.obs_cost import (
     CONDITION_ORDER,
     RESOLUTION_SWEEP,
     VIEWPORT,
     count_tokens,
+    find_c4_over_c3_crossover,
     image_tokens_by_resolution,
     image_tokens_high_detail,
     image_tokens_low_detail,
+    list_products_tokens,
     measure_all,
+    measure_catalog_sweep,
     measure_composition,
     summarize,
+    summarize_catalog_sweep,
     summarize_composition,
+    synthetic_catalog,
     tile_geometry,
     _encoder,
 )
+from minishop.catalog import in_stock_sizes, load_catalog
 
 
 def test_image_tokens_high_detail_for_viewport():
@@ -126,3 +134,57 @@ def test_summarize_composition_covers_the_deterministic_conditions():
     assert totals["C1(est)"] == max(totals.values())
     # C3's condition-specific part is dominated by the tool schema it re-sends.
     assert summary["C3"]["tools_schema"] > summary["C3"]["observation"]
+
+
+# --- Catalog-size sweep ------------------------------------------------------
+
+
+def test_synthetic_catalog_preserves_real_products_and_shape():
+    real = load_catalog()
+    assert synthetic_catalog(len(real)) == real
+    padded = synthetic_catalog(50)
+    assert padded[: len(real)] == real
+    assert len(padded) == 50
+    ids = [item["id"] for item in padded]
+    assert len(ids) == len(set(ids))  # no id collisions
+    for item in padded[len(real) :]:
+        assert set(item) == {"id", "name", "price", "sizes", "stock"}
+        assert in_stock_sizes(item)  # padding has purchasable shape
+
+
+def test_synthetic_catalog_rejects_shrinking():
+    with pytest.raises(ValueError):
+        synthetic_catalog(1)
+
+
+def test_in_memory_replay_matches_http_baseline_at_real_size():
+    """The sweep's in-memory replay reproduces measure_all at the real catalog."""
+    http_costs = {c.task_id: c for c in measure_all()}
+    rows = measure_catalog_sweep([len(load_catalog())])
+    assert len(rows) == len(http_costs)
+    for r in rows:
+        h = http_costs[r.task_id]
+        assert (r.steps, r.c3_obs_tokens, r.c4_obs_tokens) == (h.steps, h.c3_obs_tokens, h.c4_obs_tokens)
+        assert r.c1_obs_tokens == h.c1_obs_tokens
+
+
+def test_c4_grows_with_catalog_and_c3_does_not():
+    summary = summarize_catalog_sweep(measure_catalog_sweep([8, 50]))
+    assert summary[50]["C4"] > summary[8]["C4"]
+    assert summary[50]["C3"] == summary[8]["C3"]
+    assert summary[50]["C1(est)"] == summary[8]["C1(est)"]
+
+
+def test_list_products_payload_grows_with_catalog():
+    enc = _encoder()
+    assert list_products_tokens(enc, synthetic_catalog(50)) > list_products_tokens(enc, synthetic_catalog(8))
+
+
+def test_crossover_is_found_and_consistent():
+    n = find_c4_over_c3_crossover(8, 50)
+    assert n is not None
+    assert 8 < n <= 50
+    below = summarize_catalog_sweep(measure_catalog_sweep([n - 1]))[n - 1]
+    at = summarize_catalog_sweep(measure_catalog_sweep([n]))[n]
+    assert below["C4"] <= below["C3"]
+    assert at["C4"] > at["C3"]
