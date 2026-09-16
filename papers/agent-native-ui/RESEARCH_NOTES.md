@@ -35,7 +35,11 @@ is untested.
   `paper.md` Section 3. No new citations in this note.
 
 Gaps: one model; no C4 constraint-pruning ablation; latency not instrumented;
-one synthetic app; 10-task power; C4 hand-authored.
+one synthetic app (server-held view state only; SPA/client-state unmeasured);
+10-task power; C4 hand-authored; grader slack (last order only, substring
+address, substitution-passable refusals; disclosed in paper Section 4);
+prompt guidance differs per condition (disclosed); 8-product catalog embedded
+whole in both structured conditions (scale unmeasured).
 
 ## Ranked next units
 
@@ -43,19 +47,31 @@ one synthetic app; 10-task power; C4 hand-authored.
    general checkpoint that can do C1-C4 in one API (Vertex alias `sonnet` or
    `grok-fast` once enabled). Especially: does that model obey `enabled: false`
    on t10? No model mix across conditions. Do not pool models.
-2. **C4 constraint-pruning ablation.** Strip `enabled` flags and argument enums
+2. **Grader tightening (hygiene before more models).** Exact-order match,
+   full address, substitution-proof refusals. Scripted 20/20 and oracle must
+   stay green; then re-run C3/C4 N=5 (~$0.15) to confirm Tables 1-3 do not
+   move. Small spend needs an Akash nod.
+3. **Catalog-size obs-cost sweep (free).** Recompute the observation-cost
+   baseline at synthetic catalog sizes (8, 50, 500, 5000) to find where C4
+   document size overtakes the C3 schema. Zero model calls.
+4. **Prompt-equalization ablation.** Neutral usage guidance for C3 and C4,
+   re-run the structured pair N=5 (~$0.15). Tests the coaching confound now
+   disclosed in paper Section 4.
+5. **C4 constraint-pruning ablation.** Strip `enabled` flags and argument enums
    from the C4 document (keep view and entities). Measures compactness versus
    constraint-carrying. PROTOCOL change first, then code.
-3. **Related work (writing).** Venue-format the verified list; keep the honest
+6. **Related work (writing).** Venue-format the verified list; keep the honest
    "what this is not" list. Do not add un-checked citations.
-4. **Paper 2 AX later.** Package tokens, steps, success, illegal actions,
+7. **Paper 2 AX later.** Package tokens, steps, success, illegal actions,
    ignored-affordance, and latency as an Agent Experience suite. Not this
    paper. Individual metrics are not new.
 
-Also later, not this unit: latency instrumentation; specialized computer-use
-models as a final check; a second application; compiled or model-extracted C4
-versus the hand-authored upper bound. No Temporal. No arXiv submit. No
-expensive multi-model sweeps in the current unit.
+Also later, not this unit: latency instrumentation; C4 error-message echo
+re-run (paper Section 10); specialized computer-use models as a final check;
+a second application, ideally an SPA with client-held view state (paper
+Section 8.2); compiled or model-extracted C4 versus the hand-authored upper
+bound. No Temporal. No arXiv submit. No expensive multi-model sweeps in the
+current unit.
 
 ## Akash versus auto-advance
 
@@ -66,6 +82,8 @@ expensive multi-model sweeps in the current unit.
 - Confirm which second model (`sonnet` vs `grok-fast`) and whether C1 is
   dropped if that model lacks vision.
 - Approve the C4 ablation PROTOCOL wording before it is frozen.
+- Nod for the two ~$0.15 structured re-runs: grader re-check (unit 2) and
+  prompt ablation (unit 4).
 - Paper 2 AX: greenlight when Paper 1's general-model table is stable.
 - Any new citation that is not already in `research-plan.md` "Key references
   (verified)".
