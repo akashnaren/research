@@ -31,6 +31,7 @@ body {
   font-family: Georgia, "Times New Roman", serif;
   font-size: 11.5pt; line-height: 1.55; color: #1a1a1a;
   max-width: 820px; margin: 0 auto; padding: 24px;
+  overflow-wrap: break-word;
 }
 h1 { font-size: 20pt; line-height: 1.25; margin: 0 0 4px; }
 h2 { font-size: 15pt; margin: 1.4em 0 0.4em; border-bottom: 1px solid #ddd; padding-bottom: 3px; }
@@ -39,7 +40,12 @@ p, li { text-align: left; }
 em { color: #333; }
 code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.9em;
   background: #f3f3f3; padding: 1px 4px; border-radius: 3px; }
-pre { background: #f6f8fa; padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
+/* Print clips anything that overflows (no scrollbars on paper), so code must
+   wrap instead of relying on overflow-x, and the font is sized so the paper's
+   longest code line fits the print width without wrapping at all. */
+pre { background: #f6f8fa; padding: 10px 12px; border-radius: 6px;
+  font-size: 9pt; line-height: 1.4;
+  white-space: pre-wrap; overflow-wrap: break-word; }
 pre code { background: none; padding: 0; }
 blockquote { margin: 1em 0; padding: 8px 14px; background: #fff8e1;
   border-left: 4px solid #e0b400; color: #5a4a00; font-size: 0.95em; }
@@ -48,7 +54,15 @@ th, td { border: 1px solid #ccc; padding: 6px 9px; text-align: left; vertical-al
 th { background: #f0f0f0; }
 a { color: #0b5cad; text-decoration: none; }
 h2, h3 { page-break-after: avoid; }
-table, pre, blockquote { page-break-inside: avoid; }
+p, li { orphans: 2; widows: 2; }
+/* Keep a table's caption paragraph on the same page as the table it labels. */
+p:has(+ table) { page-break-after: avoid; }
+/* Tall tables must be allowed to break across pages; forbidding it strands
+   the caption at a page bottom and leaves half-empty pages. Rows stay whole
+   and the header row repeats on every page of a split table. */
+pre, blockquote { page-break-inside: avoid; }
+tr { page-break-inside: avoid; }
+thead { display: table-header-group; }
 """
 
 
@@ -81,6 +95,14 @@ def main() -> None:
             format="A4",
             print_background=True,
             margin={"top": "22mm", "bottom": "22mm", "left": "20mm", "right": "20mm"},
+            display_header_footer=True,
+            header_template="<span></span>",
+            footer_template=(
+                "<div style=\"width:100%; text-align:center; "
+                "font-family:Georgia, serif; font-size:9px; color:#888;\">"
+                "<span class='pageNumber'></span> / <span class='totalPages'></span>"
+                "</div>"
+            ),
         )
         browser.close()
     print(f"wrote {PDF_OUT}")
