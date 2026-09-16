@@ -18,6 +18,13 @@ is untested.
 - Protocol: `PROTOCOL.md` (frozen). Harness: `dualsurface/minishop/`.
 - Model-free observation-cost baseline (`harness/obs_cost.py`): C1 ~1105, C3
   ~512, C4 ~453 observation tokens per step on the minimal path.
+- Catalog-size obs-cost sweep (2026-09-16, zero model calls,
+  `--catalog-sweep 8,50,500,5000`): C4 median obs/step overtakes C3 at **13
+  products**; C4 grows 453 / 992 / 6,767 / 64,517 across 8/50/500/5000 while
+  C3 stays flat at 512 (its canonical path never reads the catalog; a real C3
+  run pays the growing `list_products` payload once per task, 369 to 294,897
+  tokens). The n=8 row reproduces the recorded baseline. Artifact:
+  [`results-catalog-obs-cost.md`](results-catalog-obs-cost.md).
 - Oracle control: C3 and C4 reach 100% with a scripted perfect agent.
 - First model, N=5 (`gemini-2.5-flash` via Vertex): C1 30% [18, 42] at ~46k
   median input tokens; C2 72% [60, 84] with 0.198 illegal/step and 0.116
@@ -51,20 +58,20 @@ whole in both structured conditions (scale unmeasured).
    full address, substitution-proof refusals. Scripted 20/20 and oracle must
    stay green; then re-run C3/C4 N=5 (~$0.15) to confirm Tables 1-3 do not
    move. Small spend needs an Akash nod.
-3. **Catalog-size obs-cost sweep (free).** Recompute the observation-cost
-   baseline at synthetic catalog sizes (8, 50, 500, 5000) to find where C4
-   document size overtakes the C3 schema. Zero model calls.
-4. **Prompt-equalization ablation.** Neutral usage guidance for C3 and C4,
+3. **Prompt-equalization ablation.** Neutral usage guidance for C3 and C4,
    re-run the structured pair N=5 (~$0.15). Tests the coaching confound now
    disclosed in paper Section 4.
-5. **C4 constraint-pruning ablation.** Strip `enabled` flags and argument enums
+4. **C4 constraint-pruning ablation.** Strip `enabled` flags and argument enums
    from the C4 document (keep view and entities). Measures compactness versus
    constraint-carrying. PROTOCOL change first, then code.
-6. **Related work (writing).** Venue-format the verified list; keep the honest
+5. **Related work (writing).** Venue-format the verified list; keep the honest
    "what this is not" list. Do not add un-checked citations.
-7. **Paper 2 AX later.** Package tokens, steps, success, illegal actions,
+6. **Paper 2 AX later.** Package tokens, steps, success, illegal actions,
    ignored-affordance, and latency as an Agent Experience suite. Not this
    paper. Individual metrics are not new.
+
+Done 2026-09-16: catalog-size obs-cost sweep (was unit 3); see the evidence
+bullet above and [`results-catalog-obs-cost.md`](results-catalog-obs-cost.md).
 
 Also later, not this unit: latency instrumentation; C4 error-message echo
 re-run (paper Section 10); specialized computer-use models as a final check;
