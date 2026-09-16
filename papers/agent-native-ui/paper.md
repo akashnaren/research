@@ -141,9 +141,11 @@ describes the store, the conditions, the tasks, and a real view document
 (C4). Section 5 defines the metrics and the analysis. Section 6 reports
 results in three layers: a model-free baseline, an oracle control, and
 the model run. Section 7 separates what these results show from what
-later measurements must show. Section 8 describes how a real application
-could ship a view document (C4). Sections 9 and 10 cover limitations and
-future work.
+later measurements must show. Section 8 explains how the page and the
+document stay consistent, what that mechanism assumes about the
+application, and how a real application, including an existing one,
+could ship a view document (C4). Sections 9 and 10 cover limitations
+and future work.
 
 ## 2. Terms used in this paper
 
@@ -245,9 +247,9 @@ document (C4).
 
 ## 4. Study design
 
-**The store.** MiniShop is a small shop with a catalog, product pages, a
-cart, and a checkout. Its backend state is the single source of truth for
-grading. The human pages carry realistic clutter (promotional copy, a
+**The store.** MiniShop is a small shop with a catalog of eight
+products, product pages, a cart, and a checkout. Its backend state is
+the single source of truth for grading. The human pages carry realistic clutter (promotional copy, a
 search box, decorative filters, help links), so the screenshot (C1) and
 accessibility tree (C2) conditions see a page genuinely built for people
 rather than a stripped-down agent shell. Sold-out sizes are visible but
@@ -300,6 +302,19 @@ is compact, or because it carries constraints. Those two mechanisms stay
 entangled until the ablation described in Section 6.5 is run. Models are
 never mixed within a comparison.
 
+**What the prompts say.** Every condition runs with the same short set
+of shared rules (follow the task exactly, stop if the item cannot be
+purchased, the backend is the source of truth) followed by a few lines
+describing that condition's interface and how to use it. The usage
+lines cannot be identical across conditions, and they are not neutral:
+the flat tools (C3) prompt names a sensible order of operations (list
+the products, open one, set a size, and so on), and the view document
+(C4) prompt advises preferring enabled actions. Some part of any
+between-condition gap is therefore instruction authorship rather than
+representation. This is a confound shared by every cross-interface
+comparison, we state it rather than pretend it away, and equalizing the
+guidance is a cheap ablation queued in Section 10.
+
 **The four conditions.**
 
 | Condition | What the agent sees | How it acts |
@@ -311,13 +326,26 @@ never mixed within a comparison.
 
 **Tasks and grading.** Ten frozen tasks: seven purchases that should
 succeed and three requests that should be refused. The grader inspects
-the backend order record and is never another model. A purchase counts
-only if the product, size, and shipping address all match. A refusal
-counts only if the forbidden order was never placed: t03 asks for a
-sold-out size, t05 asks to pay with an empty cart, t07 asks for another
-sold-out size. Because an agent that does nothing can technically pass a
-refusal, refusal results are reported separately and never inflate the
-headline success rate.
+backend order records and is never another model. Because every number
+in Section 6 rests on it, its criteria are stated here exactly as
+implemented. A purchase passes if the most recent order contains the
+requested product in the requested size and its shipping address
+contains the requested street line. A refusal passes if the forbidden
+product and size pair was never ordered (t03 and t07 ask for sold-out
+sizes) or if no order exists at all (t05 asks to pay with an empty
+cart). These checks are minimal, and the slack in them is real. An
+extra item in the order, an earlier wrong order, or the right street in
+the wrong city would all slip through, and an agent that "helpfully"
+substituted an in-stock size and bought it would pass a refusal task,
+which a real user would count as a serious failure. The recorded runs
+had no room to exploit this slack: the passing structured runs finished
+on the shortest correct path, refusal passes in the text conditions
+ended within two or three steps, and the screenshot (C1) never
+completed a purchase anywhere in the sweep, so no substitute order
+slipped in. The checks still deserve tightening before a model appears
+that tests them, and Section 10 queues that. Because an agent that does
+nothing can technically pass a refusal, refusal results are reported
+separately and never inflate the headline success rate.
 
 **Table T1.** The frozen task set.
 
@@ -337,7 +365,11 @@ headline success rate.
 **How a run works.** One run is one combination of condition, task, and
 repeat. The agent loops (observe, act, observe) and the run ends when the
 model declares it is finished, when the grader marks a purchase task
-complete, or at the twenty-step cap. A full sweep is 4 conditions by 10
+complete, or at the twenty-step cap. Ending purchase runs at the
+grader's signal keeps the sweep cheap, but it costs observability: the
+agent never has to notice on its own that it is done, and anything it
+might have done after succeeding is invisible. Section 9 returns to
+this. A full sweep is 4 conditions by 10
 tasks by 5 repeats, 200 runs. Before any model runs, a deterministic
 oracle (a scripted agent that already knows the correct action sequence
 for every task) is executed on flat tools (C3) and view document (C4). It
@@ -692,6 +724,18 @@ carry the state in its head, costs the least. A representation that pays
 per step to describe state earns the least where there is the least
 state to describe.
 
+The store is small in a second way, and this one cuts against both
+structured conditions equally. With eight products, the document can
+afford to embed the whole catalog on the catalog view and a complete
+list of product ids inside its action schemas, and flat tools (C3) can
+afford to return the whole catalog from a single lookup. At a realistic
+catalog size neither could ship the catalog on every step. Both would
+need search and pagination actions, and a well-designed document would
+grow with what is on the current screen rather than with the size of
+the database. How the token ordering of Table 1 moves as the catalog
+grows can be measured without a single model call, and Section 10
+queues it.
+
 ### 7.2 What later measurements must show
 
 These are predictions, not results.
@@ -708,10 +752,12 @@ These are predictions, not results.
    time instead of tokens, the verdict could flip without any number in
    Table 1 changing.
 4. **A harder application.** More views, more state, more ways to act
-   illegally. That is where we expect the state-tracking tax on flat
-   tools (C3) to grow, and where the trade should tilt. Until that
-   measurement exists, "flat tools (C3) wins on MiniShop" must not be
-   read as "do not build agent surfaces."
+   illegally. The natural choice is a single-page application, where the
+   server cannot even name the current view; Section 8.2 explains why
+   that is the sharpest test. That is where we expect the state-tracking
+   tax on flat tools (C3) to grow, and where the trade should tilt.
+   Until that measurement exists, "flat tools (C3) wins on MiniShop"
+   must not be read as "do not build agent surfaces."
 
 ## 8. How an application could ship a view document (C4)
 
@@ -723,9 +769,68 @@ address field, already hides Pay until the cart and address are set.
 Shipping a view document (C4) is mostly *writing down checks the
 application already performs*, not authoring new business rules. The
 backend remains the authority, and the document must never advertise an
-action the backend would reject, which is a testable property.
+action the backend would reject, which is a testable property. This
+section explains how the page and the document stay consistent in this
+study, what that mechanism assumes about an application, and the
+realistic routes by which an application, new or existing, could
+produce such a document.
 
-Five ways to produce the document, from highest leverage to most general:
+### 8.1 How the page and the document stay in sync
+
+The phrase "a JSON version of the website" suggests an export: some job
+that walks the site, writes a copy, and must then be kept in step with
+the live pages. Nothing of that kind exists in this study, and the
+distinction is the whole point. MiniShop holds one session record on
+the server: the current view, the open product, the selected size, the
+cart, the address, the orders. When a person requests a page, an HTML
+template renders that record. When an agent requests the document, a
+second renderer serializes the same record. Both are produced at
+request time from the same source. They can no more drift apart than
+two templates of the same page can, because neither is derived from the
+other; both are projections of one state. The automated consistency
+check described in Section 4.1 covers the remaining risk, that the
+document's `enabled` flags might disagree with what the backend
+enforces. Synchronization is therefore not an ongoing maintenance task
+in this architecture. It is a property of generating both surfaces from
+one state at the moment of each request.
+
+Two caveats keep this honest. First, the document is true at the moment
+it is read, not at the moment the agent acts. Stock can sell out and
+another session can change the world between the look and the click, so
+`enabled: true` is current advice, not a reservation. The correct
+reading is "worth attempting now," never "guaranteed to succeed," and
+the backend must still validate every action when it arrives, which
+here it does. MiniShop's tasks have a single actor, so this gap never
+shows in the tables; on a live site it would. Second, the document
+describes one session, and it is only meaningful to the agent acting in
+that session: the same login, the same cart, the same prices that user
+would see. The harness passes an explicit session id with every
+request; a production version would ride the same cookies and
+authentication as the page it accompanies.
+
+### 8.2 What this mechanism assumes about the application
+
+Generating the document from backend state quietly assumes the backend
+knows what the user is looking at. In MiniShop it does. The current
+view is a field in the server session, which is how server-rendered,
+multi-page applications work. A large share of the modern web does not
+work that way. In a single-page application, where the browser runs the
+interface and calls the server only for data, the state the document
+needs most (which screen is open, what is selected, what has been typed
+but not yet saved) lives in the client, and the server cannot name the
+screen at all. For such an application a faithful view document (C4)
+cannot come from the server alone. It would have to be produced where
+the view state lives, for example by serializing the application's own
+client-side state store, and nothing in this paper measures that
+variant. This is the strongest assumption the study rests on, so it is
+stated plainly: the measured result covers applications whose server
+holds the view state. The second application planned in
+Section 10 should be a single-page application precisely because it
+attacks this assumption.
+
+### 8.3 Five ways to produce the document
+
+From highest leverage to most general:
 
 1. **Framework-emitted.** The developer declares views, state, and
    actions once, and the framework renders both the human page and the
@@ -743,14 +848,35 @@ Five ways to produce the document, from highest leverage to most general:
    document generator is roughly three to four times the code of its flat
    tools (C3) catalog, and it mirrors checks the human page already makes.
 4. **Compiled from the human page.** A compiler reads the DOM, ARIA
-   roles, and disabled attributes and emits a document. It costs the
-   application nothing, but it inherits only what the page happens to
-   render, and it can disagree with the backend, so it must be validated
-   before it is trusted.
+   roles, and disabled attributes of the rendered page, at runtime in a
+   browser, an extension, or a rendering proxy, and emits a document. It
+   requires nothing from the application, but it pays the page rendering
+   it hoped to avoid, it inherits only what the page happens to render,
+   and it can disagree with the backend, so it must be validated before
+   it is trusted.
 5. **Model-extracted.** A model reads the screen and writes the document.
    It works on any application with zero cooperation, and it inverts the
    economics: the cost returns on every step, along with the risk of
    hallucinated actions. A fallback, not the goal.
+
+### 8.4 Getting there from an existing application
+
+An existing site does not have to adopt this everywhere or all at once,
+and the incremental route follows from the per-view design. Pick the
+one or two flows agents actually attempt (checkout, booking, an account
+change), write or project the document for those views only, and leave
+the rest of the site untouched, retiring the gap one view at a time.
+The per-view cost is the one quantified in path 3 above. Which route
+fits depends on where the truth lives. A server-rendered application is
+the easy case measured here: the work is a second serializer over
+session state the server already holds. A single-page application keeps
+the truth in the client, so the serializer belongs there (Section 8.2).
+An application that cannot cooperate at all is left with the compiled
+path and its fidelity costs. Deploy drift is the remaining operational
+risk on every route except the framework-emitted one: the page changes
+every release and a hand-written or compiled document ages with it, so
+the consistency check belongs in the release tests, where silent drift
+becomes a failing build instead of a lying surface.
 
 **The underlying trade.** A view document (C4) pays once, at authoring or
 compile time, for the ability to state what is true and allowed at every
@@ -783,10 +909,11 @@ the hand-written upper bound established here is future work.
 
 ## 9. Limitations
 
-**Scope.** One model, one small synthetic store, ten tasks. The paired
-intervals resample over seven purchase tasks and three refusals, so they
-are wide by construction. Nothing here generalizes beyond a controlled
-shopping task yet.
+**Scope.** One model, one small synthetic store, ten tasks, and one
+application architecture, a server that holds all view state (Section
+8.2). The paired intervals resample over seven purchase tasks and three
+refusals, so they are wide by construction. Nothing here generalizes
+beyond a controlled shopping task yet.
 
 **The document is an upper bound.** A hand-written view document (C4) is
 as good as such a surface gets. A sloppier generated one would do worse,
@@ -807,6 +934,24 @@ cheap and could plausibly recover t10.
 **Refusals can pass by inaction.** They are therefore reported apart from
 purchases throughout.
 
+**The grader checks the minimum.** It reads the most recent order,
+requires the requested item to be present rather than the order to be
+exact, matches the street without the city, and scores a refusal as the
+absence of the forbidden order (Section 4). A stricter grader could
+only lower success numbers, never raise them. The step counts argue the
+recorded numbers would survive it: passing structured runs used the
+shortest correct path, and refusal passes were too short to contain a
+substitute purchase. The accessibility tree (C2) passes are long enough
+that untidy orders cannot be fully ruled out without re-checking, which
+Section 10 queues.
+
+**Purchase runs end at the grader's signal.** The loop checks the
+grader after every step and stops a purchase run the moment it passes,
+so the step medians never include the agent recognizing completion, and
+anything an agent might do after succeeding is unobserved. Refusal runs
+have no such signal and end only when the model stops or the cap is
+hit.
+
 **Image accounting is provider-specific.** Some providers itemize image
 tokens and some fold them into the prompt count, so the screenshot (C1)
 is read from total input tokens, and the tiling numbers are a labeled
@@ -823,6 +968,12 @@ observation. This is the same for every condition, but it also means
 flat tools (C3) cannot compensate by accumulating a long transcript, and
 other memory policies are untested.
 
+**Each prompt coaches its own condition.** Every condition's system
+prompt adds a few lines of usage guidance that cannot be identical
+across conditions (Section 4), so part of any between-condition gap may
+be instruction authorship rather than representation. Equalizing the
+guidance is queued in Section 10.
+
 **The screenshot (C1) error rate understates its errors.** Coordinate
 clicks rarely trigger the backend's validity check, so for the
 screenshot (C1) the informative numbers are success, steps, and tokens.
@@ -838,16 +989,23 @@ model has not yet been run.
 
 ## 10. Future work
 
-Nearest first: instrument latency and re-run timed; run a second and
-then a third general model, reporting each separately; run the
-constraint-stripping ablation; re-run the view document (C4) with
-backend error messages echoed into the next observation, to test whether
-t10 recovers; report an ignored-affordance rate per model. After that: a
-second, more complex application, which is the main lever on external
-validity; a validated Agent Experience metric suite, which is a separate
-paper; and automatic generation of the agent surface, compiled from the
-page or extracted by a model, measured against the hand-written upper
-bound established here.
+Nearest first: tighten the grader to exact-order matching, full
+addresses, and substitution-proof refusals, then re-check the sweep
+under it; recompute the observation-cost baseline at larger synthetic
+catalog sizes, which needs no model calls, to find where document size
+overtakes the schema cost; equalize the usage guidance in the condition
+prompts and re-run the structured pair; instrument latency and re-run
+timed; run a second and then a third general model, reporting each
+separately; run the constraint-stripping ablation; re-run the view
+document (C4) with backend error messages echoed into the next
+observation, to test whether t10 recovers; report an ignored-affordance
+rate per model. After that: a second, more complex application, ideally
+a single-page application whose view state lives in the client (Section
+8.2), which is the main lever on external validity and the sharpest
+test of this study's strongest assumption; a validated Agent Experience
+metric suite, which is a separate paper; and automatic generation of
+the agent surface, compiled from the page or extracted by a model,
+measured against the hand-written upper bound established here.
 
 ## Appendix: reproducing the numbers
 
