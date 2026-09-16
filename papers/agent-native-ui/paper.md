@@ -421,17 +421,26 @@ print; the live document lists every catalog id.
     ]
   },
   "affordances": [
-    {"id": "open_product", "enabled": true, "input": {"type": "object",
-      "properties": {"product_id": {"type": "string"}}, "required": ["product_id"]}},
-    {"id": "set_size", "enabled": true, "input": {"type": "object",
-      "properties": {"size": {"type": "string", "enum": ["S", "M", "L"]}},
-      "required": ["size"]}},
-    {"id": "add_to_cart", "enabled": true, "input": {"type": "object", "properties": {}}},
-    {"id": "go_catalog", "enabled": true, "input": {"type": "object", "properties": {}}},
-    {"id": "go_checkout", "enabled": true, "input": {"type": "object", "properties": {}}},
-    {"id": "set_address", "enabled": false, "input": {"type": "object",
-      "properties": {"address": {"type": "string"}}, "required": ["address"]}},
-    {"id": "pay", "enabled": false, "input": {"type": "object", "properties": {}}}
+    {"id": "open_product", "enabled": true,
+     "input": {"type": "object",
+       "properties": {"product_id": {"type": "string"}},
+       "required": ["product_id"]}},
+    {"id": "set_size", "enabled": true,
+     "input": {"type": "object",
+       "properties": {"size": {"type": "string", "enum": ["S", "M", "L"]}},
+       "required": ["size"]}},
+    {"id": "add_to_cart", "enabled": true,
+     "input": {"type": "object", "properties": {}}},
+    {"id": "go_catalog", "enabled": true,
+     "input": {"type": "object", "properties": {}}},
+    {"id": "go_checkout", "enabled": true,
+     "input": {"type": "object", "properties": {}}},
+    {"id": "set_address", "enabled": false,
+     "input": {"type": "object",
+       "properties": {"address": {"type": "string"}},
+       "required": ["address"]}},
+    {"id": "pay", "enabled": false,
+     "input": {"type": "object", "properties": {}}}
   ]
 }
 ```
