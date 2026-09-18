@@ -547,6 +547,7 @@ about 2.4 times cheaper per look than pixels, and the view document (C4)
 is slightly cheaper per look than flat tools (C3). This measures the
 observation term only. Real runs add step-count effects, and Section 6.3
 shows they reverse the ordering of flat tools (C3) and view document (C4).
+Section 7.1 reports how these per-look costs move as the catalog grows.
 
 ### 6.2 The apparatus, checked without a model
 
@@ -737,13 +738,37 @@ The store is small in a second way, and this one cuts against both
 structured conditions equally. With eight products, the document can
 afford to embed the whole catalog on the catalog view and a complete
 list of product ids inside its action schemas, and flat tools (C3) can
-afford to return the whole catalog from a single lookup. At a realistic
-catalog size neither could ship the catalog on every step. Both would
-need search and pagination actions, and a well-designed document would
-grow with what is on the current screen rather than with the size of
-the database. How the token ordering of Table 1 moves as the catalog
-grows can be measured without a single model call, and Section 10
-queues it.
+afford to return the whole catalog from a single lookup. We measured
+what happens to that arrangement as the catalog grows, with no model
+call: the same canonical task paths are replayed against the real
+catalog padded with synthetic products, and observation tokens are
+counted exactly as in Section 6.1, whose numbers the eight-product row
+reproduces. Median observation tokens per step:
+
+| Catalog products | Screenshot (C1), estimate | Flat tools (C3) | View document (C4) |
+| --- | --- | --- | --- |
+| 8 | 1105 | 512 | 453 |
+| 50 | 1105 | 512 | 992 |
+| 500 | 1105 | 512 | 6,767 |
+| 5,000 | 1105 | 512 | 64,517 |
+
+The view document (C4) overtakes flat tools (C3) at a catalog of
+thirteen products. Its per-look advantage in Section 6.1 is therefore a
+small-catalog artifact of this particular document design, which ships
+the whole catalog and a complete id list in every look. The flat row
+for flat tools (C3) deserves its own caution: it stays flat only
+because its canonical path never reads the catalog. A real flat tools
+(C3) run calls `list_products` at least once per task, and that one
+reply grows the same way, from 369 tokens at eight products to 294,897
+at five thousand. So at scale neither condition survives as designed:
+the view document (C4) pays per look, and flat tools (C3) pays per
+lookup. The screenshot (C1) column is flat because image cost is set by
+the viewport, not by content. The design conclusion stands, and it is
+now measured rather than predicted: a scale-aware document must grow
+with what is on the current screen (paginated entities, and id
+references instead of a complete id list), not with the size of the
+database. None of this changes any recorded model result. Tables 1
+through 3 are eight-product numbers and stand as reported.
 
 ### 7.2 What later measurements must show
 
@@ -918,11 +943,13 @@ the hand-written upper bound established here is future work.
 
 ## 9. Limitations
 
-**Scope.** One model, one small synthetic store, ten tasks, and one
-application architecture, a server that holds all view state (Section
-8.2). The paired intervals resample over seven purchase tasks and three
-refusals, so they are wide by construction. Nothing here generalizes
-beyond a controlled shopping task yet.
+**Scope.** One model, one small synthetic store of eight products
+(Section 7.1 measures how observation costs scale when the catalog
+grows), ten tasks, and one application architecture, a server that
+holds all view state (Section 8.2). The paired intervals resample over
+seven purchase tasks and three refusals, so they are wide by
+construction. Nothing here generalizes beyond a controlled shopping
+task yet.
 
 **The document is an upper bound.** A hand-written view document (C4) is
 as good as such a surface gets. A sloppier generated one would do worse,
@@ -1000,9 +1027,7 @@ model has not yet been run.
 
 Nearest first: tighten the grader to exact-order matching, full
 addresses, and substitution-proof refusals, then re-check the sweep
-under it; recompute the observation-cost baseline at larger synthetic
-catalog sizes, which needs no model calls, to find where document size
-overtakes the schema cost; equalize the usage guidance in the condition
+under it; equalize the usage guidance in the condition
 prompts and re-run the structured pair; instrument latency and re-run
 timed; run a second and then a third general model, reporting each
 separately; run the constraint-stripping ablation; re-run the view
