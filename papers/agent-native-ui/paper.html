@@ -699,7 +699,8 @@ a median of roughly 1105 tokens on the screenshot (C1), 512 on flat tools
 about 2.4 times cheaper per look than pixels, and the view document (C4)
 is slightly cheaper per look than flat tools (C3). This measures the
 observation term only. Real runs add step-count effects, and Section 6.3
-shows they reverse the ordering of flat tools (C3) and view document (C4).</p>
+shows they reverse the ordering of flat tools (C3) and view document (C4).
+Section 7.1 reports how these per-look costs move as the catalog grows.</p>
 <h3 id="62-the-apparatus-checked-without-a-model">6.2 The apparatus, checked without a model</h3>
 <p>The deterministic oracle described in Section 4 replays the known-correct
 policy and scores 100 percent on flat tools (C3) and view document (C4).
@@ -1040,13 +1041,65 @@ state to describe.</p>
 structured conditions equally. With eight products, the document can
 afford to embed the whole catalog on the catalog view and a complete
 list of product ids inside its action schemas, and flat tools (C3) can
-afford to return the whole catalog from a single lookup. At a realistic
-catalog size neither could ship the catalog on every step. Both would
-need search and pagination actions, and a well-designed document would
-grow with what is on the current screen rather than with the size of
-the database. How the token ordering of Table 1 moves as the catalog
-grows can be measured without a single model call, and Section 10
-queues it.</p>
+afford to return the whole catalog from a single lookup. We measured
+what happens to that arrangement as the catalog grows, with no model
+call: the same canonical task paths are replayed against the real
+catalog padded with synthetic products, and observation tokens are
+counted exactly as in Section 6.1, whose numbers the eight-product row
+reproduces. Median observation tokens per step:</p>
+<table>
+<thead>
+<tr>
+<th>Catalog products</th>
+<th>Screenshot (C1), estimate</th>
+<th>Flat tools (C3)</th>
+<th>View document (C4)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>8</td>
+<td>1105</td>
+<td>512</td>
+<td>453</td>
+</tr>
+<tr>
+<td>50</td>
+<td>1105</td>
+<td>512</td>
+<td>992</td>
+</tr>
+<tr>
+<td>500</td>
+<td>1105</td>
+<td>512</td>
+<td>6,767</td>
+</tr>
+<tr>
+<td>5,000</td>
+<td>1105</td>
+<td>512</td>
+<td>64,517</td>
+</tr>
+</tbody>
+</table>
+<p>The view document (C4) overtakes flat tools (C3) at a catalog of
+thirteen products. Its per-look advantage in Section 6.1 is therefore a
+small-catalog artifact of this particular document design, which ships
+the whole catalog and a complete id list in every look. The flat row
+for flat tools (C3) deserves its own caution: it stays flat only
+because its canonical path never reads the catalog. A real flat tools
+(C3) run calls <code>list_products</code> at least once per task, and that one
+reply grows the same way, from 369 tokens at eight products to 294,897
+at five thousand. So at scale neither condition survives as designed:
+the view document (C4) pays per look, and flat tools (C3) pays per
+lookup. The screenshot (C1) column is flat because image cost is set by
+the viewport, not by content. The design conclusion stands, and it is
+now measured rather than predicted: a scale-aware document must grow
+with what is on the current screen (paginated entities, and id
+references instead of a complete id list), not with the size of the
+database. None of this changes any recorded model result. Tables 1
+through 3 are eight-product numbers and stand as reported.</p>
 <h3 id="72-what-later-measurements-must-show">7.2 What later measurements must show</h3>
 <p>These are predictions, not results.</p>
 <ol>
@@ -1244,11 +1297,13 @@ the backend would reject.</p>
 <p>Measuring the two generated paths (compiled and model-extracted) against
 the hand-written upper bound established here is future work.</p>
 <h2 id="9-limitations">9. Limitations</h2>
-<p><strong>Scope.</strong> One model, one small synthetic store, ten tasks, and one
-application architecture, a server that holds all view state (Section
-8.2). The paired intervals resample over seven purchase tasks and three
-refusals, so they are wide by construction. Nothing here generalizes
-beyond a controlled shopping task yet.</p>
+<p><strong>Scope.</strong> One model, one small synthetic store of eight products
+(Section 7.1 measures how observation costs scale when the catalog
+grows), ten tasks, and one application architecture, a server that
+holds all view state (Section 8.2). The paired intervals resample over
+seven purchase tasks and three refusals, so they are wide by
+construction. Nothing here generalizes beyond a controlled shopping
+task yet.</p>
 <p><strong>The document is an upper bound.</strong> A hand-written view document (C4) is
 as good as such a surface gets. A sloppier generated one would do worse,
 and by how much is unmeasured.</p>
@@ -1311,9 +1366,7 @@ model has not yet been run.</p>
 <h2 id="10-future-work">10. Future work</h2>
 <p>Nearest first: tighten the grader to exact-order matching, full
 addresses, and substitution-proof refusals, then re-check the sweep
-under it; recompute the observation-cost baseline at larger synthetic
-catalog sizes, which needs no model calls, to find where document size
-overtakes the schema cost; equalize the usage guidance in the condition
+under it; equalize the usage guidance in the condition
 prompts and re-run the structured pair; instrument latency and re-run
 timed; run a second and then a third general model, reporting each
 separately; run the constraint-stripping ablation; re-run the view

@@ -72,6 +72,10 @@ whole in both structured conditions (scale unmeasured).
 
 Done 2026-09-16: catalog-size obs-cost sweep (was unit 3); see the evidence
 bullet above and [`results-catalog-obs-cost.md`](results-catalog-obs-cost.md).
+Done 2026-09-18: sweep woven into `paper.md` (Section 7.1 table plus the
+13-product crossover; Section 10 item retired; Scope limitation points to
+it). Auto-advance, zero spend; spend units (RQ3 second model, grader
+re-check, prompt ablation, C4 pruning PROTOCOL) still need Akash.
 
 Also later, not this unit: latency instrumentation; C4 error-message echo
 re-run (paper Section 10); specialized computer-use models as a final check;
