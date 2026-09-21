@@ -63,7 +63,9 @@ whole in both structured conditions (scale unmeasured).
    disclosed in paper Section 4.
 4. **C4 constraint-pruning ablation.** Strip `enabled` flags and argument enums
    from the C4 document (keep view and entities). Measures compactness versus
-   constraint-carrying. PROTOCOL change first, then code.
+   constraint-carrying. PROTOCOL change first, then code. Proposal drafted
+   2026-09-21 and awaiting Akash approval, not frozen:
+   [`PROTOCOL-C4-pruning-proposal.md`](PROTOCOL-C4-pruning-proposal.md).
 5. **Related work (writing).** Venue-format the verified list; keep the honest
    "what this is not" list. Do not add un-checked citations.
 6. **Paper 2 AX later.** Package tokens, steps, success, illegal actions,
