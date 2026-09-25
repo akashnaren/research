@@ -14,8 +14,8 @@ Two figures are produced (PNG):
   reconstructed deterministically; C2's accessibility tree needs a live browser,
   so its bar is measured from the recorded run traces when they are available.
 
-Figures are written to ``--out`` (default ``/opt/cursor/artifacts``). Nothing is
-billed and no model is called.
+Figures are written to ``--out`` (default ``report``, same as the other
+harness commands). Nothing is billed and no model is called.
 """
 
 from __future__ import annotations
@@ -169,7 +169,7 @@ def composition_figure(out: Path) -> Path:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Render token-accounting figures (no model)")
-    parser.add_argument("--out", default="/opt/cursor/artifacts", help="Output directory for PNGs")
+    parser.add_argument("--out", default="report", help="Output directory for PNGs")
     args = parser.parse_args(argv)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

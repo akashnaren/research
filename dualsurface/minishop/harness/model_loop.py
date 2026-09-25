@@ -79,15 +79,6 @@ def _parse_action(text: str) -> tuple[dict[str, Any], bool]:
     return {}, True
 
 
-def _parse_json(text: str) -> dict[str, Any]:
-    """Backward-compatible wrapper: return only the action object.
-
-    Retained for callers/tests that do not need the malformed signal.
-    """
-    action, _ = _parse_action(text)
-    return action
-
-
 JSON_ONLY_INSTRUCTION = (
     "\n\nRespond with a single JSON object only. No prose, no markdown fences, "
     "no text before or after the JSON object."
@@ -116,8 +107,8 @@ def _messages(
     if force_json_text:
         # Some Vertex OpenAI-compat paths (e.g. Anthropic/Claude) do not
         # reliably support response_format=json_object; fall back to
-        # instructing JSON-only output via the prompt instead, and parse
-        # leniently with _parse_json.
+        # instructing JSON-only output via the prompt instead. _parse_action
+        # accepts a JSON object wrapped in extra text.
         system = system + JSON_ONLY_INSTRUCTION
     return [
         {"role": "system", "content": system},

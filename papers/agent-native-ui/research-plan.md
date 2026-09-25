@@ -385,7 +385,7 @@ must be answered before moving on.
     initially crashed on t02 because the model returned a JSON **array** rather
     than a single action object, which the C1/C2 apply-adapters could not
     consume. This is the vision/tool edge case anticipated in the run plan; the
-    fix was a one-function change in `harness/model_loop.py::_parse_json` to
+    fix was a one-function change in `harness/model_loop.py::_parse_action` to
     coerce any non-object (array or prose) response into an empty no-op action
     instead of raising, and C2 was re-run once (the other three conditions had
     already completed and were untouched). The whole run cost ~557k input +
