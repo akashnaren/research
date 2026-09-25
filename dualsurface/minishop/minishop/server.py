@@ -19,7 +19,7 @@ from minishop.tools import tool_schemas
 PACKAGE_DIR = Path(__file__).resolve().parent
 catalog = load_catalog()
 tasks = load_tasks()
-store = Store(catalog)
+store = Store()
 templates = Jinja2Templates(directory=str(PACKAGE_DIR / "templates"))
 
 app = FastAPI(title="MiniShop")
@@ -143,19 +143,52 @@ def agent_grade(session_id: str = Query(...), task_id: str = Query(...)) -> dict
     return grade(session, _task_by_id(task_id))
 
 
+def _related(product_id: str) -> list[dict[str, Any]]:
+    return [item for item in catalog if item["id"] != product_id][:3]
+
+
+def _product_extra(product_id: str, error: str | None = None) -> dict[str, Any]:
+    product = product_by_id(catalog, product_id)
+    return {
+        "product": product,
+        "available": in_stock_sizes(product) if product else [],
+        "related": _related(product_id),
+        "error": error,
+        "illegal": bool(error),
+    }
+
+
+def _on_product(session_id: str, product_id: str) -> None:
+    session = store.get(session_id)
+    if session.get("product_id") != product_id or session.get("view") != "product":
+        apply_action(
+            store, catalog, session_id, "open_product", {"product_id": product_id}, enforce_surface=False
+        )
+
+
+def _on_checkout(session_id: str) -> None:
+    if store.get(session_id).get("view") != "checkout":
+        apply_action(store, catalog, session_id, "go_checkout", {}, enforce_surface=False)
+
+
+def _redirect(url: str, session_id: str) -> RedirectResponse:
+    response = RedirectResponse(url=url, status_code=303)
+    response.set_cookie("session_id", session_id)
+    return response
+
+
 @app.get("/", response_class=HTMLResponse)
 def human_catalog(
     request: Request,
     session_id: str | None = Cookie(default=None),
     q: str | None = None,
-    filter: str | None = None,
+    chip: str | None = Query(default=None, alias="filter"),
 ):
     sid = _resolve_session_id(request, session_id)
     session = store.get(sid)
     if session["view"] != "catalog":
         apply_action(store, catalog, sid, "go_catalog", {}, enforce_surface=False)
-    _ = q, filter
-    return _render(request, "catalog.html", sid, {"query": q or "", "active_filter": filter or ""})
+    return _render(request, "catalog.html", sid, {"query": q or "", "active_filter": chip or ""})
 
 
 @app.get("/product/{product_id}", response_class=HTMLResponse)
@@ -164,20 +197,11 @@ def human_product(
     product_id: str,
     session_id: str | None = Cookie(default=None),
 ):
-    product = product_by_id(catalog, product_id)
-    if product is None:
+    if product_by_id(catalog, product_id) is None:
         raise HTTPException(status_code=404, detail="unknown product")
     sid = _resolve_session_id(request, session_id)
-    session = store.get(sid)
-    if session["view"] != "product" or session.get("product_id") != product_id:
-        apply_action(store, catalog, sid, "open_product", {"product_id": product_id}, enforce_surface=False)
-    related = [item for item in catalog if item["id"] != product_id][:3]
-    return _render(
-        request,
-        "product.html",
-        sid,
-        {"product": product, "available": in_stock_sizes(product), "related": related},
-    )
+    _on_product(sid, product_id)
+    return _render(request, "product.html", sid, _product_extra(product_id))
 
 
 @app.post("/product/{product_id}/size")
@@ -188,30 +212,12 @@ def human_set_size(
     session_id: str | None = Cookie(default=None),
 ):
     sid = _resolve_session_id(request, session_id)
-    session = store.get(sid)
-    if session.get("product_id") != product_id or session.get("view") != "product":
-        apply_action(store, catalog, sid, "open_product", {"product_id": product_id}, enforce_surface=False)
+    _on_product(sid, product_id)
     try:
         apply_action(store, catalog, sid, "set_size", {"size": size}, enforce_surface=False)
     except IllegalAction as exc:
-        product = product_by_id(catalog, product_id)
-        related = [item for item in catalog if item["id"] != product_id][:3]
-        return _render(
-            request,
-            "product.html",
-            sid,
-            {
-                "product": product,
-                "available": in_stock_sizes(product) if product else [],
-                "related": related,
-                "error": exc.message,
-                "illegal": True,
-            },
-            status_code=400,
-        )
-    response = RedirectResponse(url=f"/product/{product_id}", status_code=303)
-    response.set_cookie("session_id", sid)
-    return response
+        return _render(request, "product.html", sid, _product_extra(product_id, exc.message), status_code=400)
+    return _redirect(f"/product/{product_id}", sid)
 
 
 @app.post("/product/{product_id}/add", response_class=HTMLResponse)
@@ -221,27 +227,17 @@ def human_add_to_cart(
     session_id: str | None = Cookie(default=None),
 ):
     sid = _resolve_session_id(request, session_id)
-    session = store.get(sid)
-    if session.get("product_id") != product_id or session.get("view") != "product":
-        apply_action(store, catalog, sid, "open_product", {"product_id": product_id}, enforce_surface=False)
+    _on_product(sid, product_id)
     error = None
     try:
         apply_action(store, catalog, sid, "add_to_cart", {}, enforce_surface=False)
     except IllegalAction as exc:
         error = exc.message
-    product = product_by_id(catalog, product_id)
-    related = [item for item in catalog if item["id"] != product_id][:3]
     return _render(
         request,
         "product.html",
         sid,
-        {
-            "product": product,
-            "available": in_stock_sizes(product) if product else [],
-            "related": related,
-            "error": error,
-            "illegal": bool(error),
-        },
+        _product_extra(product_id, error),
         status_code=400 if error else 200,
     )
 
@@ -265,9 +261,7 @@ def human_set_address(
     session_id: str | None = Cookie(default=None),
 ):
     sid = _resolve_session_id(request, session_id)
-    session = store.get(sid)
-    if session.get("view") != "checkout":
-        apply_action(store, catalog, sid, "go_checkout", {}, enforce_surface=False)
+    _on_checkout(sid)
     try:
         apply_action(store, catalog, sid, "set_address", {"address": address}, enforce_surface=False)
     except IllegalAction as exc:
@@ -278,17 +272,13 @@ def human_set_address(
             {"error": exc.message, "illegal": True, "order": None},
             status_code=400,
         )
-    response = RedirectResponse(url="/checkout", status_code=303)
-    response.set_cookie("session_id", sid)
-    return response
+    return _redirect("/checkout", sid)
 
 
 @app.post("/checkout/pay", response_class=HTMLResponse)
 def human_pay(request: Request, session_id: str | None = Cookie(default=None)):
     sid = _resolve_session_id(request, session_id)
-    session = store.get(sid)
-    if session.get("view") != "checkout":
-        apply_action(store, catalog, sid, "go_checkout", {}, enforce_surface=False)
+    _on_checkout(sid)
     error = None
     try:
         apply_action(store, catalog, sid, "pay", {}, enforce_surface=False)

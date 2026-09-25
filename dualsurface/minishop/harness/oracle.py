@@ -31,15 +31,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-
-def _encoder():
-    """The o200k_base reference tokenizer, matching ``harness/obs_cost.py``."""
-    import tiktoken
-
-    try:
-        return tiktoken.get_encoding("o200k_base")
-    except Exception:  # pragma: no cover - environment dependent
-        return tiktoken.get_encoding("cl100k_base")
+from harness.tokens import encoder as get_encoder
 
 
 class OracleClient:
@@ -76,7 +68,7 @@ class OracleClient:
         self.task_id = task_id
         self._policy = [(name, dict(arguments)) for name, arguments in policy]
         self._pos = 0
-        self._enc = encoder if encoder is not None else _encoder()
+        self._enc = encoder if encoder is not None else get_encoder()
 
     def _next_step(self) -> tuple[str, dict[str, Any]] | None:
         """Pop the next policy step, or None if the policy is exhausted."""

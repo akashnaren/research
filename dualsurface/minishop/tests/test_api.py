@@ -139,6 +139,10 @@ def test_human_sold_out_size_is_visible_and_disabled():
     assert "disabled" in html
     assert "Add to cart" in html
     assert "Staff picks" in html
+    catalog_page = client.get("/", params={"filter": "sale", "q": "tee"})
+    assert catalog_page.status_code == 200
+    assert 'class="chip on"' in catalog_page.text
+    assert 'value="tee"' in catalog_page.text
 
 
 def test_ten_tasks_match_protocol_ids():
