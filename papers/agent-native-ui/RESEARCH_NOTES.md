@@ -112,7 +112,6 @@ current unit.
 
 ## Web export
 
-Profile ingest path: `papers/agent-native-ui/paper.pdf` (exact PDF).
+The site reads `papers/agent-native-ui/paper.pdf`.
 Editable source: `paper.md`. `build.py` rebuilds `paper.html` and `paper.pdf`.
-`web/article.md` is a pointer only. Do not ingest it. The github.io reader is
-Profile Engineer’s job. Do not open PRs on `akashnaren.github.io`.
+Do not open pull requests on `akashnaren.github.io`.
