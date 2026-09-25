@@ -8,8 +8,7 @@ from typing import Any
 class Store:
     """In-memory sessions. Human UI, tools, and the view document share this."""
 
-    def __init__(self, catalog: list[dict[str, Any]]) -> None:
-        self.catalog = catalog
+    def __init__(self) -> None:
         self._sessions: dict[str, dict[str, Any]] = {}
 
     def new_session(self) -> str:

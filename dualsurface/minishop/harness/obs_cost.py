@@ -43,6 +43,7 @@ from fastapi.testclient import TestClient
 
 from harness.prompts import system_prompt
 from harness.scripted import POLICIES
+from harness.tokens import count_tokens, encoder as _encoder
 from minishop.actions import IllegalAction, apply_action
 from minishop.catalog import compact_products, load_catalog, load_tasks
 from minishop.server import app
@@ -62,20 +63,6 @@ RESOLUTION_SWEEP: tuple[tuple[int, int], ...] = (
     (1536, 864),
     (1920, 1080),
 )
-
-
-def _encoder():
-    import tiktoken
-
-    try:
-        return tiktoken.get_encoding("o200k_base")
-    except Exception:  # pragma: no cover - environment dependent
-        return tiktoken.get_encoding("cl100k_base")
-
-
-def count_tokens(enc, obj: Any) -> int:
-    text = obj if isinstance(obj, str) else json.dumps(obj)
-    return len(enc.encode(text))
 
 
 def tile_geometry(width: int, height: int) -> tuple[float, float, int]:
@@ -532,7 +519,7 @@ def _replay_task_at_catalog(
     policy = POLICIES[task["id"]]
     image_per_step = image_tokens_high_detail(*VIEWPORT)
 
-    store4 = Store(catalog)
+    store4 = Store()
     sid4 = store4.new_session()
     c4 = 0
     for name, arguments in policy:
@@ -542,7 +529,7 @@ def _replay_task_at_catalog(
         except IllegalAction:
             break
 
-    store3 = Store(catalog)
+    store3 = Store()
     sid3 = store3.new_session()
     c3 = 0
     steps = 0
