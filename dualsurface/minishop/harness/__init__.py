@@ -1,1 +1,0 @@
-# Scripted and model harnesses.
