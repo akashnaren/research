@@ -9,9 +9,4 @@ __pycache__/
 dist/
 build/
 .DS_Store
-dualsurface/minishop/traces/
-dualsurface/minishop/report/
-dualsurface/minishop/.playwright/
 node_modules/
-*.png
-!docs/**/*.png
